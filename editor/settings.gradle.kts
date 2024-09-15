@@ -1,7 +1,0 @@
-pluginManagement {
-    resolutionStrategy {
-        repositories {
-            gradlePluginPortal()
-        }
-    }
-}
