@@ -4,10 +4,17 @@ import kotlin.wasm.unsafe.Pointer
 import kotlin.wasm.unsafe.UnsafeWasmMemoryApi
 import kotlin.wasm.unsafe.withScopedMemoryAllocator
 
-fun main() {
-    println("Hello from Kotlin via WASI")
-    println("Current 'realtime' timestamp is: ${wasiRealTimeRuntime()}")
-    println("Current 'monotonic' timestamp is: ${wasiMonotonicTimeRuntime()}")
+@WasmImport("engine", "foo_test")
+private external fun foo_test(a: Int, b: Int): Int
+
+@WasmExport
+fun wasm_main(a:Int, b:Int):Int {
+    //println("Helloe from Kotlin via WASI")
+    //println("Current 'realtime' timestamp is: ${wasiRealTimeRuntime()}")
+    //println("Current 'monotonic' timestamp is: ${wasiMonotonicTimeRuntime()}")
+    var ret = foo_test(a, b);
+    //println("foo_test: ${ret}")
+    return ret;
 }
 
 @WasmImport("wasi_snapshot_preview1", "clock_time_get")

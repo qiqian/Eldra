@@ -82,3 +82,7 @@ bin/
 .DS_Store
 
 cmake-build-*
+
+**/.idea/vcs.xml
+**/.idea/editor.xml
+**/.idea/launcher.iml

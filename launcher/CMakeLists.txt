@@ -1,7 +1,23 @@
 cmake_minimum_required(VERSION 3.29)
 project(launcher)
 
+set (CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+set (SUBMODULE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../submodule)
+
 set (WAMR_BUILD_PLATFORM "windows")
+if (WAMR_BUILD_PLATFORM STREQUAL "windows")
+    #add_subdirectory(${SUBMODULE_DIR}/pthread-win32 submodule/pthread-win32)
+endif()
+
+set (WAMR_ROOT_DIR ${SUBMODULE_DIR}/wamr)
+set (WAMR_BUILD_GC 1)
+set (WAMR_BUILD_MEMORY64 1)
+set (WAMR_BUILD_FAST_INTERP 1)
+set (WAMR_BUILD_EXCE_HANDLING 1)
+set (WAMR_BUILD_MULTI_MODULE 1)
+set (WAMR_BUILD_THREAD_MGR 1)
+set (WAMR_BUILD_LIB_WASI_THREADS 1)
+set (WAMR_BUILD_LIB_PTHREAD_SEMAPHORE 0)
 
 # Reset default linker flags
 set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
@@ -97,8 +113,6 @@ else()
     set (CMAKE_C_STANDARD 99)
 endif()
 
-set (WAMR_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../submodule/wamr)
-
 include (${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 add_library(vmlib ${WAMR_RUNTIME_LIB_SOURCE})
 
@@ -155,10 +169,9 @@ if (WIN32)
     target_link_libraries(iwasm ntdll)
 endif()
 
-
 add_executable(launcher launcher.cpp)
-target_link_libraries (launcher vmlib ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS})
 if (WIN32)
     target_link_libraries (launcher ntdll)
 endif()
+target_link_libraries (launcher vmlib ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS})
 install (TARGETS launcher DESTINATION bin)
