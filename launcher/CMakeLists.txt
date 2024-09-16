@@ -5,9 +5,6 @@ set (CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
 set (SUBMODULE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../submodule)
 
 set (WAMR_BUILD_PLATFORM "windows")
-if (WAMR_BUILD_PLATFORM STREQUAL "windows")
-    #add_subdirectory(${SUBMODULE_DIR}/pthread-win32 submodule/pthread-win32)
-endif()
 
 set (WAMR_ROOT_DIR ${SUBMODULE_DIR}/wamr)
 set (WAMR_BUILD_GC 1)
@@ -20,7 +17,20 @@ set (WAMR_BUILD_LIBC_BUILTIN 1)
 set (WAMR_BUILD_LIBC_WASI 1)
 set (WAMR_BUILD_LIBC_UVWASI 0)
 set (WAMR_BUILD_LIB_WASI_THREADS 1)
-set (WAMR_BUILD_LIB_PTHREAD_SEMAPHORE 0)
+set (WAMR_BUILD_LIB_PTHREAD 1)
+set (WAMR_BUILD_LIB_PTHREAD_SEMAPHORE 1)
+set (WAMR_BUILD_TAIL_CALL 1)
+set (WAMR_BUILD_CUSTOM_NAME_SECTION 1)
+set (WAMR_BUILD_DUMP_CALL_STACK 1)
+set (WAMR_BUILD_GLOBAL_HEAP_POOL 1)
+set (WAMR_BUILD_REF_TYPES 1)
+set (WAMR_BUILD_LOAD_CUSTOM_SECTION 1)
+set (WAMR_CONFIGURABLE_BOUNDS_CHECKS 1)
+
+# set 1 to enable debug
+set (WAMR_BUILD_DEBUG_INTERP 0)
+set (WAMR_DISABLE_HW_BOUND_CHECK 0)
+set (WAMR_DISABLE_STACK_HW_BOUND_CHECK 0)
 
 # Reset default linker flags
 set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
@@ -174,7 +184,13 @@ endif()
 
 add_executable(launcher launcher.cpp)
 if (WIN32)
-    target_link_libraries (launcher ntdll)
+    add_subdirectory(${SUBMODULE_DIR}/pthread-win32 submodule/pthread-win32)
+    set_property(SOURCE ${WAMR_ROOT_DIR}/core/iwasm/libraries/lib-pthread/lib_pthread_wrapper.c
+            APPEND PROPERTY "COMPILE_OPTIONS"
+            "/Dos_sem_open=sem_open" "/Dos_sem_close=sem_close" "/Dos_sem_trywait=sem_trywait"
+            "/Dos_sem_post=sem_post" "/Dos_sem_getvalue=sem_getvalue" "/Dos_sem_unlink=sem_unlink")
+    target_include_directories(launcher BEFORE PUBLIC ${SUBMODULE_DIR}/pthread-win32)
+    target_link_libraries (launcher ntdll pthreadVC3)
 endif()
 target_link_libraries (launcher vmlib ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS})
 install (TARGETS launcher DESTINATION bin)
