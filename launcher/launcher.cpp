@@ -36,7 +36,7 @@ int main(int argc, const char* argv[])
     char *buffer;
     uint32_t size;
     /*Open the stream in binary mode.*/
-    std::ifstream bin_file(argv[1], std::ios::binary);
+    std::ifstream bin_file(argv[1], std::ios::binary | std::ios::in);
 
     if (!bin_file.good())
         return -2;
@@ -53,7 +53,7 @@ int main(int argc, const char* argv[])
     }
 
     /* create an instance of the WASM module (WASM linear memory is ready) */
-    uint32_t stack_size = 8092, heap_size = 8092 * 1024;
+    constexpr uint32_t stack_size = 128 * 1024 * 1024, heap_size = 128 * 1024 * 1024;
     wasm_module_inst_t module_inst = wasm_runtime_instantiate(module, stack_size, heap_size, error_buf, sizeof(error_buf));
 
     /* lookup a WASM function by its name
@@ -75,7 +75,7 @@ int main(int argc, const char* argv[])
         printf("call wasm_main\n");
         if (wasm_runtime_call_wasm(exec_env, func, 2, wasm_argv) ) {
             /* the return value is stored in argv[0] */
-            printf("wasm_main function return: %d\n", wasm_argv[0]);
+            printf("wasm_main function return: %lld\n", *(uint64_t*)wasm_argv);
         }
         else {
             /* exception is thrown if call fails */
