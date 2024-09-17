@@ -7,5 +7,4 @@ pluginManagement {
         }
     }
 }
-include("runtime")
-include("editor")
+include("runtime", "editor")
