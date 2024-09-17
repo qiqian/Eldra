@@ -88,3 +88,6 @@ cmake-build-*
 **/.idea/editor.xml
 **/.idea/launcher.iml
 **/.idea/misc.xml
+node_modules
+**/.fleet/run.json
+**/.idea/artifacts/*.xml

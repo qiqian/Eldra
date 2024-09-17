@@ -1,8 +1,0 @@
-<component name="ArtifactManager">
-  <artifact type="jar" name="editor-wasm-wasi">
-    <output-path>$PROJECT_DIR$/editor/build/libs</output-path>
-    <root id="archive" name="editor-wasm-wasi.jar">
-      <element id="module-output" name="framework.editor.wasmWasiMain" />
-    </root>
-  </artifact>
-</component>
