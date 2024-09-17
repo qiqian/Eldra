@@ -7,4 +7,5 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 
 [plugins]
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+serialization = { id = 'org.jetbrains.kotlin.plugin.serialization', version.ref = "kotlin" }
 undercouchDownload = { id = "de.undercouch.download", version.ref = "undercouch" }

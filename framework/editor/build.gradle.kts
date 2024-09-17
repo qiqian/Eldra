@@ -7,6 +7,7 @@ import java.nio.file.Files
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.serialization)
     alias(libs.plugins.undercouchDownload) apply false
 }
 
