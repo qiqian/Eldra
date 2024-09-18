@@ -10,3 +10,4 @@ crate-type = ["cdylib", "lib", "staticlib"]
 [dependencies]
 fyrox-math = "0.2.0"
 once_cell = "1.19.0"
+lazy_static = "1.5.0"

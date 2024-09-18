@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::{RefCell};
 use std::collections::HashMap;
 use std::pin::{Pin};
@@ -12,14 +13,28 @@ pub struct Node
     parent: Weak<RefCell<Node>>,
     children: HashMap<u64, Pin<Box<Rc<RefCell<Node>>>>>,
 }
-/*
+impl EngineObject for Node {}
+
 impl Drop for Node {
     fn drop(&mut self) {
         let id = self.id;
         println!("Dropping Node {id}");
     }
 }
-*/
+
+fn node_cast_const(addr : u64) -> &'static Rc<RefCell<Node>> {
+    unsafe {
+        &*(addr as *const Rc<RefCell<Node>>)
+    }
+}
+// not used, but kept as this transform is interesting
+fn node_transform(any : Pin<Box<dyn Any>>) -> Pin<Box<Rc<RefCell<Node>>>> {
+    unsafe {
+        let addr = &*(addr_of!(*any) as *const Rc<RefCell<Node>>);
+        //Box::leak(Pin::into_inner_unchecked(any));
+        Box::pin(addr.clone())
+    }
+}
 
 impl Node {
 
@@ -39,8 +54,10 @@ impl Node {
         if c.borrow().parent.upgrade().is_none() {
             // p.children <- c
             let cid = c.borrow().id;
-            let c_obj = engine_remove(cid);
-            self.children.insert(c.borrow_mut().id, c_obj);
+            // need to do this before remove, otherwise c get destroyed
+            let new_pin = Box::pin(c.clone());
+            engine_remove(cid);
+            self.children.insert(cid, new_pin);
             // c.parent <- p
             c.borrow_mut().parent = self.myself.clone();
             true
@@ -97,20 +114,20 @@ fn Node_new() -> u64 {
 #[no_mangle]
 pub extern "C"
 fn Node_add_child(parent: u64, child: u64) -> bool {
-    let p = engine_cast_mut(parent);
-    let c = engine_cast_const(child);
+    let p = node_cast_const(parent);
+    let c = node_cast_const(child);
     p.borrow_mut().add_child(c)
 }
 #[no_mangle]
 pub extern "C"
 fn Node_detach_from_parent(addr: u64) -> bool {
-    let node = engine_cast_mut(addr);
+    let node = node_cast_const(addr);
     node.borrow_mut().detach_from_parent()
 }
 
 #[no_mangle]
 pub extern "C"
 fn Node_destroy(addr: u64) {
-    let node = engine_cast_mut(addr);
+    let node = node_cast_const(addr);
     node.borrow_mut().destroy();
 }
