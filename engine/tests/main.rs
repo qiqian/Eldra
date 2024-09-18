@@ -8,4 +8,8 @@ fn test_add() {
     let parent = Node_new();
     let child = Node_new();
     Node_add_child(parent, child);
+    Node_detach_from_parent(child);
+    Node_add_child(parent, child);
+    Node_destroy(child);
+    Node_destroy(parent);
 }
