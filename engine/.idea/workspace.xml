@@ -7,11 +7,7 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="4a16c4ee-696d-4067-86cd-1e60d2e0ff6b" name="更改" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/engine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/engine.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/node.rs" afterDir="false" />
-    </list>
+    <list default="true" id="4a16c4ee-696d-4067-86cd-1e60d2e0ff6b" name="更改" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -195,11 +191,11 @@
     </configuration>
     <list>
       <item itemvalue="Cargo.Test engine" />
-      <item itemvalue="Cargo.test" />
       <item itemvalue="Cargo.build" />
       <item itemvalue="Cargo.install" />
       <item itemvalue="Cargo.package" />
       <item itemvalue="Cargo.publish" />
+      <item itemvalue="Cargo.test" />
     </list>
     <recent_temporary>
       <list>
@@ -227,6 +223,7 @@
       <workItem from="1726561617107" duration="13185000" />
       <workItem from="1726590350129" duration="11323000" />
       <workItem from="1726628809572" duration="5499000" />
+      <workItem from="1726671585357" duration="65000" />
     </task>
     <servers />
   </component>
