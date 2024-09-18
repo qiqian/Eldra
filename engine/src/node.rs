@@ -6,18 +6,23 @@ use std::ptr::addr_of;
 use std::rc::{Rc, Weak};
 use super::engine::{*};
 
-pub struct Node
+pub struct BaseObject
 {
     pub id: u64,
-    myself: Weak<RefCell<Node>>,
     parent: Weak<RefCell<Node>>,
+}
+pub struct Node
+{
+    base: BaseObject,
+    myself: Weak<RefCell<Node>>,
     children: HashMap<u64, Pin<Box<Rc<RefCell<Node>>>>>,
+    components: HashMap<u64, Pin<Box<Rc<RefCell<dyn Any>>>>>,
 }
 impl EngineObject for Node {}
 
 impl Drop for Node {
     fn drop(&mut self) {
-        let id = self.id;
+        let id = self.base.id;
         println!("Dropping Node {id}");
     }
 }
@@ -40,9 +45,11 @@ impl Node {
 
     pub fn new() -> Pin<Box<Rc<RefCell<Node>>>> {
         let node = Box::pin(Rc::new(RefCell::new(Node {
-            id: engine_next_global_id(),
+            base : BaseObject {
+                id: engine_next_global_id(),
+                parent: Weak::new(),
+            },
             myself: Weak::new(),
-            parent: Weak::new(),
             children: HashMap::new()
         })));
         let myself = node.clone();
@@ -51,15 +58,15 @@ impl Node {
     }
 
     pub fn add_child(&mut self, c: &Rc<RefCell<Node>>) -> bool {
-        if c.borrow().parent.upgrade().is_none() {
+        if c.borrow().base.parent.upgrade().is_none() {
             // p.children <- c
-            let cid = c.borrow().id;
+            let cid = c.borrow().base.id;
             // need to do this before remove, otherwise c get destroyed
             let new_pin = Box::pin(c.clone());
             engine_remove(cid);
             self.children.insert(cid, new_pin);
             // c.parent <- p
-            c.borrow_mut().parent = self.myself.clone();
+            c.borrow_mut().base.parent = self.myself.clone();
             true
         }
         else {
@@ -69,31 +76,31 @@ impl Node {
     }
 
     pub fn detach_from_parent(&mut self) -> bool {
-        let par = self.parent.upgrade();
+        let par = self.base.parent.upgrade();
         if par.is_none() {
             println!("child has no parent");
             false
         }
         else {
             let parent = par.unwrap();
-            let pinned = parent.borrow_mut().children.remove(&self.id);
-            self.parent = Weak::new();
+            let pinned = parent.borrow_mut().children.remove(&self.base.id);
+            self.base.parent = Weak::new();
             // keep in global
-            engine_pin(self.id, pinned.unwrap());
+            engine_pin(self.base.id, pinned.unwrap());
             true
         }
     }
 
     pub fn destroy(&mut self) {
-        let par = self.parent.upgrade();
+        let par = self.base.parent.upgrade();
         if par.is_none() {
             // remove from global
-            engine_remove(self.id);
+            engine_remove(self.base.id);
         }
         else {
             // remove from parent
             let parent = par.unwrap();
-            parent.borrow_mut().children.remove(&self.id);
+            parent.borrow_mut().children.remove(&self.base.id);
         }
     }
 
@@ -106,7 +113,7 @@ pub extern "C"
 fn Node_new() -> u64 {
     let node = Node::new();
     let addr = addr_of!(*node) as u64;
-    let cid = node.borrow().id;
+    let cid = node.borrow().base.id;
     engine_pin(cid, node);
     addr
 }

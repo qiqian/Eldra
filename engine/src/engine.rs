@@ -36,8 +36,8 @@ pub fn engine_pin(id: u64, pin: Pin<Box<dyn Any>>) {
     }
 }
 
-pub fn engine_remove(cid : u64) -> Pin<Box<dyn Any>> {
+pub fn engine_remove(id : u64) -> Pin<Box<dyn Any>> {
     unsafe {
-        ENGINE_ROOT.get_mut().unwrap().object_registry.remove(&cid).unwrap()
+        ENGINE_ROOT.get_mut().unwrap().object_registry.remove(&id).unwrap()
     }
 }
