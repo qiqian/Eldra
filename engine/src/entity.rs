@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::pin::{Pin};
 use std::ptr::addr_of;
 use std::rc::{Rc, Weak};
+use std::ops::DerefMut;
 use super::engine::{*};
 
 pub struct BaseObject
@@ -72,24 +73,23 @@ impl Entity {
             c.borrow_mut().base.parent = self.myself.clone();
             true
         } else {
-            println!("child already has parent");
+            let cid = c.borrow().base.id;
+            println!("entity:{cid} already has parent");
             false
         }
     }
     pub fn remove_child(&mut self, c: &Rc<RefCell<Entity>>) -> bool {
-        let mut c_mut = c.borrow_mut();
-        let c_p = c_mut.base.parent.upgrade();
-        if c_p.is_none() {// || c_p.unwrap().borrow().base.id != self.base.id {
-            println!("child is not my child");
-            false
-        }
-        else {
-            let pinned = self.children.remove(&c_mut.base.id);
-            c_mut.base.parent = Weak::new();
+        let pinned = self.children.remove(&c.borrow().base.id);
+        if !pinned.is_none() {
+            c.borrow_mut().base.parent = Weak::new();
             // keep in global
-            engine_pin(c_mut.base.id, pinned.unwrap());
-            true
+            engine_pin(c.borrow().base.id, pinned.unwrap());
+            return true;
         }
+        let myid = self.base.id;
+        let cid = c.borrow().base.id;
+        println!("entity:{cid} is not my:{myid} child");
+        false
     }
 
     /*
@@ -108,27 +108,26 @@ impl Entity {
             true
         }
     }*/
+}
 
-    pub fn destroy(&mut self) {
-        let par = self.base.parent.upgrade();
-        if par.is_none() {
-            // remove from global
-            engine_remove(self.base.id);
-        }
-        else {
-            // remove from parent
-            let parent = par.unwrap();
-            parent.borrow_mut().children.remove(&self.base.id);
-        }
+pub fn Entity_destroy(e: &mut Entity) {
+    let par = e.base.parent.upgrade();
+    if par.is_none() {
+        // remove from global
+        engine_remove(e.base.id);
     }
-
+    else {
+        // remove from parent
+        let parent = par.unwrap();
+        parent.borrow_mut().children.remove(&e.base.id);
+    }
 }
 
 //// exports
 
 #[no_mangle]
 pub extern "C"
-fn Entity_new() -> u64 {
+fn _Entity_new() -> u64 {
     let entity = Entity::new();
     let addr = addr_of!(*entity) as u64;
     let cid = entity.borrow().base.id;
@@ -138,21 +137,21 @@ fn Entity_new() -> u64 {
 
 #[no_mangle]
 pub extern "C"
-fn Entity_add_child(parent: u64, child: u64) -> bool {
+fn _Entity_add_child(parent: u64, child: u64) -> bool {
     let p = entity_cast_const(parent);
     let c = entity_cast_const(child);
     p.borrow_mut().add_child(c)
 }
 #[no_mangle]
 pub extern "C"
-fn Entity_remove_child(parent: u64, child: u64) -> bool {
+fn _Entity_remove_child(parent: u64, child: u64) -> bool {
     let p = entity_cast_const(parent);
     let c = entity_cast_const(child);
     p.borrow_mut().remove_child(c)
 }
 #[no_mangle]
 pub extern "C"
-fn Entity_get_parent(addr: u64) -> u64 {
+fn _Entity_get_parent(addr: u64) -> u64 {
     let entity = entity_cast_const(addr);
     let p = entity.borrow().base.parent.upgrade();
     if p.is_none() {
@@ -165,7 +164,7 @@ fn Entity_get_parent(addr: u64) -> u64 {
 /*
 #[no_mangle]
 pub extern "C"
-fn Entity_detach_from_parent(addr: u64) -> bool {
+fn _Entity_detach_from_parent(addr: u64) -> bool {
     let entity = entity_cast_const(addr);
     entity.borrow_mut().detach_from_parent()
 }
@@ -173,7 +172,7 @@ fn Entity_detach_from_parent(addr: u64) -> bool {
 
 #[no_mangle]
 pub extern "C"
-fn Entity_destroy(addr: u64) {
+fn _Entity_destroy(addr: u64) {
     let entity = entity_cast_const(addr);
-    entity.borrow_mut().destroy();
+    Entity_destroy(entity.borrow_mut().deref_mut());
 }
