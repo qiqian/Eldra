@@ -8,23 +8,22 @@ use crate::comp::uarg::UArg;
 use crate::entity;
 use crate::entity::{*};
 
+#[derive(Default)]
 pub struct TransformComponent
 {
     pub base: BaseObject,
     pub local_matrix: Matrix4<f32>,
 }
 
-impl Default for TransformComponent {
-    fn default() -> Self {
-        TransformComponent {
-            base : BaseObject::default(),
-            local_matrix : Matrix4::identity(),
-        }
+impl Drop for TransformComponent {
+    fn drop(&mut self) {
+        let id = self.base.id;
+        println!("Dropping TransformComponent {id}");
     }
 }
 impl TransformComponent {
-    pub fn new() -> TransformComponent {
-        TransformComponent{..Default::default()}
+    pub fn new() -> Self {
+        TransformComponent::default()
     }
     pub fn translate(&mut self, v: &Vector3<f32>) {
         self.local_matrix.append_translation(v);

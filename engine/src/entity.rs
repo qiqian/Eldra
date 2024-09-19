@@ -38,11 +38,20 @@ pub struct Entity
     // to contain a weak self pointer, we must use Rc
     // but Rc is readonly, that leads to Rc<RefCell<_>>
     children: HashMap<u64, Pin<Box<Rc<RefCell<Entity>>>>>,
-    components: Vec<Box<dyn Component>>,
+    // component pointer is leaked into entity to work around trait conversion issue
+    // this is safe because they have the same lifecycle, just do cleanup when removing the component
+    components: Vec<*mut dyn Component>,
 }
 
 impl Drop for Entity {
     fn drop(&mut self) {
+        for mut c in self.components.iter_mut() {
+            unsafe {
+                // cleanup
+                let leaked : *mut dyn Component = *c;
+                let _ = Box::from_raw(leaked);
+            };
+        }
         let id = self.base.id;
         println!("Dropping Entity {id}");
     }
@@ -95,20 +104,31 @@ impl Entity {
         false
     }
 
-    pub fn add_component<T: Component + 'static>(&mut self, c: T) -> *const Box<T> {
+    pub fn add_component<T: Component + 'static>(&mut self, c: T) -> *mut T {
         unsafe {
-            //TODO maybe bugged, the box can be cloned
-            let pinned = Pin::into_inner_unchecked(Box::pin(c));
-            let c_addr = addr_of!(pinned);
+            //leak it
+            let pinned = Box::into_raw(Pin::into_inner_unchecked(Box::pin(c)));
             self.components.push(pinned);
-            c_addr
+            pinned
         }
+    }
+    pub fn remove_component(&mut self, candidate: *mut dyn Component) -> bool {
+        for idx in 0..self.components.len() {
+            let mut cc : *mut dyn Component = self.components[idx];
+            if cc == candidate {
+                self.components.remove(idx);
+                unsafe { let _ = Box::from_raw(cc); }
+                return true
+            }
+        }
+        false
     }
     pub fn get_component<T: Component + 'static>(&'static mut self)
         -> Option<&mut T> where {
         for mut c in self.components.iter_mut() {
-            if c.type_id() == TypeId::of::<T>() {
-                return c.as_any().downcast_mut::<T>()
+            let mut cc = unsafe { &mut **c };
+            if cc.type_id() == TypeId::of::<T>() {
+                return cc.as_any().downcast_mut::<T>()
             }
         }
         None
@@ -116,7 +136,8 @@ impl Entity {
 
     pub fn tick(&mut self, delta: f32, parent: &Option<Rc<RefCell<Entity>>>) {
         for c in self.components.iter_mut() {
-            c.tick(delta, parent);
+            let mut cc = unsafe { &mut **c };
+            cc.tick(delta, parent);
         }
         let opt = self.myself.upgrade();
         for c in self.children.iter() {
