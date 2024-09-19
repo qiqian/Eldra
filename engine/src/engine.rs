@@ -5,7 +5,6 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use once_cell::sync::OnceCell;
 
-pub trait EngineObject {}
 pub struct Engine
 {
     pub uid_generator : AtomicU64,
@@ -27,7 +26,7 @@ pub fn engine_init() {
 pub fn engine_next_global_id() -> u64
 {
     unsafe {
-        ENGINE_ROOT.get_mut().unwrap().uid_generator.fetch_add(1, Ordering::Acquire)
+        ENGINE_ROOT.get_unchecked().uid_generator.fetch_add(1, Ordering::Acquire)
     }
 }
 pub fn engine_pin(id: u64, pin: Pin<Box<dyn Any>>) {

@@ -1,5 +1,6 @@
+use std::any::Any;
 use std::cell::RefCell;
-use std::rc::Weak;
+use std::rc::{Rc, Weak};
 use std::pin::{Pin};
 use std::ops::{Deref, DerefMut};
 use nalgebra::{*};
@@ -22,9 +23,8 @@ impl Default for TransformComponent {
     }
 }
 impl TransformComponent {
-    pub fn new() -> Pin<Box<RefCell<TransformComponent>>> {
-        let t = TransformComponent{..Default::default()};
-        Box::pin(RefCell::new(t))
+    pub fn new() -> TransformComponent {
+        TransformComponent{..Default::default()}
     }
     pub fn translate(&mut self, v: &Vector3<f32>) {
         self.local_matrix.append_translation(v);
@@ -40,7 +40,8 @@ impl TransformComponent {
     }
 }
 impl Component for TransformComponent {
-    fn tick(&mut self, delta: f32, parent: &Option<&&mut Entity>) {
+    fn as_any(&mut self) -> &mut dyn Any { self }
+    fn tick(&mut self, delta: f32, parent: &Option<Rc<RefCell<Entity>>>) {
         if parent.is_none() {
             return;
         }
@@ -48,9 +49,9 @@ impl Component for TransformComponent {
     }
 }
 
-fn transform_component_cast(addr : u64) -> &'static RefCell<TransformComponent> {
+fn transform_component_cast<'a>(addr : &'a u64) -> &'a mut Box<TransformComponent> {
     unsafe {
-        &*(addr as *const RefCell<TransformComponent>)
+        &mut*(*addr as *mut Box<TransformComponent>)
     }
 }
 
@@ -60,20 +61,20 @@ fn transform_component_cast(addr : u64) -> &'static RefCell<TransformComponent> 
 #[no_mangle]
 pub extern "C"
 fn TransformComponent_translate(addr: u64, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(addr);
-    t.borrow_mut().translate(&Vector3::new(x, y, z));
+    let t = transform_component_cast(&addr);
+    t.translate(&Vector3::new(x, y, z));
 }
 
 #[no_mangle]
 pub extern "C"
 fn TransformComponent_rotate(addr: u64, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(addr);
-    t.borrow_mut().rotate(&Vector3::new(x, y, z));
+    let t = transform_component_cast(&addr);
+    t.rotate(&Vector3::new(x, y, z));
 }
 
 #[no_mangle]
 pub extern "C"
 fn TransformComponent_scale(addr: u64, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(addr);
-    t.borrow_mut().scale(&Vector3::new(x, y, z));
+    let t = transform_component_cast(&addr);
+    t.scale(&Vector3::new(x, y, z));
 }

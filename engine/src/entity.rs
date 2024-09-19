@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::pin::{Pin};
 use std::ptr::addr_of;
 use std::rc::{Rc, Weak};
-use std::ops::Deref;
+use std::marker::PhantomPinned;
 use std::ops::DerefMut;
 use std::any::TypeId;
 use crate::engine::{*};
@@ -14,15 +14,23 @@ pub struct BaseObject
 {
     pub id: u64,
     pub parent: Weak<RefCell<Entity>>,
+    _marker_: PhantomPinned,
 }
 impl Default for BaseObject {
     fn default() -> Self {
         BaseObject {
             id: engine_next_global_id(),
             parent: Weak::new(),
+            _marker_: PhantomPinned,
         }
     }
 }
+
+pub trait Component {
+    fn as_any(&mut self) -> &mut dyn Any;
+    fn tick(&mut self, delta: f32, parent: &Option<Rc<RefCell<Entity>>>);
+}
+#[derive(Default)]
 pub struct Entity
 {
     pub base: BaseObject,
@@ -30,12 +38,7 @@ pub struct Entity
     // to contain a weak self pointer, we must use Rc
     // but Rc is readonly, that leads to Rc<RefCell<_>>
     children: HashMap<u64, Pin<Box<Rc<RefCell<Entity>>>>>,
-    components: Vec<Pin<Box<RefCell<dyn Component>>>>,
-}
-impl EngineObject for Entity {}
-
-pub trait Component {
-    fn tick(&mut self, delta: f32, parent: &Option<&&mut Entity>);
+    components: Vec<Box<dyn Component>>,
 }
 
 impl Drop for Entity {
@@ -45,54 +48,32 @@ impl Drop for Entity {
     }
 }
 
-fn Entity_create_component(addr: u64, c: Pin<Box<RefCell<dyn Component>>>) {
-    let entity = entity_cast_const(addr);
-    entity.borrow_mut().add_component(c);
+fn entity_add_component(addr: u64, c: Rc<RefCell<dyn Component>>) {
 }
-fn entity_cast_const(addr : u64) -> &'static Rc<RefCell<Entity>> {
+fn entity_cast_const<'a>(addr : &'a u64) -> &'a Rc<RefCell<Entity>> {
     unsafe {
-        &*(addr as *const Rc<RefCell<Entity>>)
+        &*(*addr as *const Rc<RefCell<Entity>>)
     }
 }
 
-
-// not used, but kept as this transform is interesting
-fn entity_transform(any : Pin<Box<dyn Any>>) -> Pin<Box<Rc<RefCell<Entity>>>> {
-    unsafe {
-        let addr = &*(addr_of!(*any) as *const Rc<RefCell<Entity>>);
-        //Box::leak(Pin::into_inner_unchecked(any));
-        Box::pin(addr.clone())
-    }
-}
-
-impl Default for Entity {
-    fn default() -> Self {
-        Entity {
-            base : BaseObject::default(),
-            myself: Weak::new(),
-            children: HashMap::new(),
-            components: Vec::new(),
-        }
-    }
-}
 impl Entity {
-    pub fn new() -> Pin<Box<Rc<RefCell<Entity>>>> {
-        let entity = Box::pin(Rc::new(RefCell::new(Entity::default())));
+    pub fn new() -> Rc<RefCell<Entity>> {
+        let entity = Rc::new(RefCell::new(Entity::default()));
         let myself = entity.clone();
         entity.borrow_mut().myself = Rc::downgrade(&myself);
         entity
     }
 
-    pub fn add_child(&mut self, c: &Rc<RefCell<Entity>>) -> bool {
+    pub fn add_child(&mut self, c: Rc<RefCell<Entity>>) -> bool {
         if c.borrow().base.parent.upgrade().is_none() {
             // p.children <- c
             let cid = c.borrow().base.id;
-            // need to do this before remove, otherwise c get destroyed
-            let new_pin = Box::pin(c.clone());
-            engine_remove(cid);
-            self.children.insert(cid, new_pin);
             // c.parent <- p
             c.borrow_mut().base.parent = self.myself.clone();
+            // need to do this before remove, otherwise c get destroyed
+            let new_pin = Box::pin(c);
+            engine_remove(cid);
+            self.children.insert(cid, new_pin);
             true
         } else {
             let cid = c.borrow().base.id;
@@ -114,24 +95,30 @@ impl Entity {
         false
     }
 
-    pub fn add_component(&mut self, c: Pin<Box<RefCell<dyn Component>>>) {
-        self.components.push(c);
+    pub fn add_component<T: Component + 'static>(&mut self, c: T) -> *const Box<T> {
+        unsafe {
+            //TODO maybe bugged, the box can be cloned
+            let pinned = Pin::into_inner_unchecked(Box::pin(c));
+            let c_addr = addr_of!(pinned);
+            self.components.push(pinned);
+            c_addr
+        }
     }
     pub fn get_component<T: Component + 'static>(&'static mut self)
-        -> Option<RefCell<T>> {
-        for c in self.components.iter() {
-            if c.borrow().type_id() == TypeId::of::<T>() {
-                return Some(**c)
+        -> Option<&mut T> where {
+        for mut c in self.components.iter_mut() {
+            if c.type_id() == TypeId::of::<T>() {
+                return c.as_any().downcast_mut::<T>()
             }
         }
-        return None
+        None
     }
 
-    pub fn tick(&mut self, delta: f32, parent: &Option<&&mut Entity>) {
+    pub fn tick(&mut self, delta: f32, parent: &Option<Rc<RefCell<Entity>>>) {
         for c in self.components.iter_mut() {
-            c.borrow_mut().tick(delta, parent);
+            c.tick(delta, parent);
         }
-        let opt = Some(&self);
+        let opt = self.myself.upgrade();
         for c in self.children.iter() {
             c.1.borrow_mut().tick(delta, &opt);
         }
@@ -157,30 +144,32 @@ pub fn entity_destroy(e: &mut Entity) {
 pub extern "C"
 fn Entity_new() -> u64 {
     let entity = Entity::new();
-    let addr = addr_of!(*entity) as u64;
     let cid = entity.borrow().base.id;
-    engine_pin(cid, entity);
+    let pinned = Box::pin(entity);
+    // take addr after pinned
+    let addr = addr_of!(*pinned) as u64;
+    engine_pin(cid, pinned);
     addr
 }
 
 #[no_mangle]
 pub extern "C"
 fn Entity_add_child(parent: u64, child: u64) -> bool {
-    let p = entity_cast_const(parent);
-    let c = entity_cast_const(child);
-    p.borrow_mut().add_child(c)
+    let p = entity_cast_const(&parent);
+    let c = entity_cast_const(&child);
+    p.borrow_mut().add_child(c.clone())
 }
 #[no_mangle]
 pub extern "C"
 fn Entity_remove_child(parent: u64, child: u64) -> bool {
-    let p = entity_cast_const(parent);
-    let c = entity_cast_const(child);
+    let p = entity_cast_const(&parent);
+    let c = entity_cast_const(&child);
     p.borrow_mut().remove_child(c)
 }
 #[no_mangle]
 pub extern "C"
 fn Entity_get_parent(addr: u64) -> u64 {
-    let entity = entity_cast_const(addr);
+    let entity = entity_cast_const(&addr);
     let p = entity.borrow().base.parent.upgrade();
     if p.is_none() {
         0
@@ -193,7 +182,7 @@ fn Entity_get_parent(addr: u64) -> u64 {
 #[no_mangle]
 pub extern "C"
 fn Entity_destroy(addr: u64) {
-    let entity = entity_cast_const(addr);
+    let entity = entity_cast_const(&addr);
     entity_destroy(entity.borrow_mut().deref_mut());
 }
 
@@ -201,17 +190,15 @@ fn Entity_destroy(addr: u64) {
 pub extern "C"
 fn Entity_create_transform_component(addr: u64) -> u64 {
     let c = TransformComponent::new();
-    let c_addr = addr_of!(*c);
-    Entity_create_component(addr, c);
-    c_addr as u64
+    let entity = entity_cast_const(&addr);
+    entity.borrow_mut().add_component(c) as u64
 }
 
 #[no_mangle]
 pub extern "C"
 fn Entity_tick(addr: u64, delta: f32, parent_addr: u64) {
-    let entity = entity_cast_const(addr);
-    let mut parent = entity_cast_const(parent_addr).borrow_mut();
-    let mut parent_ref = parent.deref_mut();
-    let opt = if parent_addr != 0 { Some(&(parent_ref)) } else { None } ;
+    let entity = entity_cast_const(&addr);
+    let mut parent = entity_cast_const(&parent_addr);
+    let opt = if parent_addr != 0 { Some(parent.clone()) } else { None } ;
     entity.borrow_mut().tick(delta, &opt);
 }
