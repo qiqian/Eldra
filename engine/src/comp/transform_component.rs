@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Weak;
 use crate::comp::uarg::UArg;
-use crate::node::BaseObject;
-use super::super::node;
+use crate::entity;
+use crate::entity::{*};
 pub struct TransformComponent
 {
     base: BaseObject,

@@ -1,3 +1,3 @@
 pub mod engine;
-pub mod node;
+pub mod entity;
 pub mod comp;
