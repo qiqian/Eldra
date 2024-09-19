@@ -7,7 +7,11 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="4a16c4ee-696d-4067-86cd-1e60d2e0ff6b" name="更改" comment="" />
+    <list default="true" id="4a16c4ee-696d-4067-86cd-1e60d2e0ff6b" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/node.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/main.rs" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -224,26 +228,11 @@
       <workItem from="1726590350129" duration="11323000" />
       <workItem from="1726628809572" duration="5499000" />
       <workItem from="1726671585357" duration="65000" />
+      <workItem from="1726713451308" duration="1568000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/node.rs</url>
-          <line>41</line>
-          <option name="timeStamp" value="21" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/engine.rs</url>
-          <line>35</line>
-          <option name="timeStamp" value="22" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
   </component>
 </project>

@@ -9,11 +9,11 @@ use super::engine::{*};
 pub struct BaseObject
 {
     pub id: u64,
-    parent: Weak<RefCell<Node>>,
+    pub parent: Weak<RefCell<Node>>,
 }
 pub struct Node
 {
-    base: BaseObject,
+    pub base: BaseObject,
     myself: Weak<RefCell<Node>>,
     children: HashMap<u64, Pin<Box<Rc<RefCell<Node>>>>>,
     components: HashMap<u64, Pin<Box<Rc<RefCell<dyn Any>>>>>,
@@ -50,7 +50,8 @@ impl Node {
                 parent: Weak::new(),
             },
             myself: Weak::new(),
-            children: HashMap::new()
+            children: HashMap::new(),
+            components: HashMap::new(),
         })));
         let myself = node.clone();
         node.borrow_mut().myself = Rc::downgrade(&myself);
@@ -68,13 +69,28 @@ impl Node {
             // c.parent <- p
             c.borrow_mut().base.parent = self.myself.clone();
             true
-        }
-        else {
+        } else {
             println!("child already has parent");
             false
         }
     }
+    pub fn remove_child(&mut self, c: &Rc<RefCell<Node>>) -> bool {
+        let mut c_mut = c.borrow_mut();
+        let c_p = c_mut.base.parent.upgrade();
+        if c_p.is_none() {// || c_p.unwrap().borrow().base.id != self.base.id {
+            println!("child is not my child");
+            false
+        }
+        else {
+            let pinned = self.children.remove(&c_mut.base.id);
+            c_mut.base.parent = Weak::new();
+            // keep in global
+            engine_pin(c_mut.base.id, pinned.unwrap());
+            true
+        }
+    }
 
+    /*
     pub fn detach_from_parent(&mut self) -> bool {
         let par = self.base.parent.upgrade();
         if par.is_none() {
@@ -89,7 +105,7 @@ impl Node {
             engine_pin(self.base.id, pinned.unwrap());
             true
         }
-    }
+    }*/
 
     pub fn destroy(&mut self) {
         let par = self.base.parent.upgrade();
@@ -127,10 +143,31 @@ fn Node_add_child(parent: u64, child: u64) -> bool {
 }
 #[no_mangle]
 pub extern "C"
+fn Node_remove_child(parent: u64, child: u64) -> bool {
+    let p = node_cast_const(parent);
+    let c = node_cast_const(child);
+    p.borrow_mut().remove_child(c)
+}
+#[no_mangle]
+pub extern "C"
+fn Node_get_parent(addr: u64) -> u64 {
+    let node = node_cast_const(addr);
+    let p = node.borrow().base.parent.upgrade();
+    if p.is_none() {
+        0
+    } else {
+        let inner = p.unwrap();
+        addr_of!(inner) as u64
+    }
+}
+/*
+#[no_mangle]
+pub extern "C"
 fn Node_detach_from_parent(addr: u64) -> bool {
     let node = node_cast_const(addr);
     node.borrow_mut().detach_from_parent()
 }
+*/
 
 #[no_mangle]
 pub extern "C"
