@@ -4,24 +4,39 @@ use std::collections::HashMap;
 use std::pin::{Pin};
 use std::ptr::addr_of;
 use std::rc::{Rc, Weak};
+use std::ops::Deref;
 use std::ops::DerefMut;
-use super::engine::{*};
+use std::any::TypeId;
+use crate::engine::{*};
+use crate::comp::transform_component::TransformComponent;
 
 pub struct BaseObject
 {
     pub id: u64,
     pub parent: Weak<RefCell<Entity>>,
 }
+impl Default for BaseObject {
+    fn default() -> Self {
+        BaseObject {
+            id: engine_next_global_id(),
+            parent: Weak::new(),
+        }
+    }
+}
 pub struct Entity
 {
     pub base: BaseObject,
     myself: Weak<RefCell<Entity>>,
-    // to contain a weak self/parent pointer, we must use Rc
+    // to contain a weak self pointer, we must use Rc
     // but Rc is readonly, that leads to Rc<RefCell<_>>
     children: HashMap<u64, Pin<Box<Rc<RefCell<Entity>>>>>,
-    components: HashMap<u64, Pin<Box<Rc<RefCell<dyn Any>>>>>,
+    components: Vec<Pin<Box<RefCell<dyn Component>>>>,
 }
 impl EngineObject for Entity {}
+
+pub trait Component {
+    fn tick(&mut self, delta: f32, parent: &Option<&&mut Entity>);
+}
 
 impl Drop for Entity {
     fn drop(&mut self) {
@@ -30,11 +45,17 @@ impl Drop for Entity {
     }
 }
 
+fn Entity_create_component(addr: u64, c: Pin<Box<RefCell<dyn Component>>>) {
+    let entity = entity_cast_const(addr);
+    entity.borrow_mut().add_component(c);
+}
 fn entity_cast_const(addr : u64) -> &'static Rc<RefCell<Entity>> {
     unsafe {
         &*(addr as *const Rc<RefCell<Entity>>)
     }
 }
+
+
 // not used, but kept as this transform is interesting
 fn entity_transform(any : Pin<Box<dyn Any>>) -> Pin<Box<Rc<RefCell<Entity>>>> {
     unsafe {
@@ -44,18 +65,19 @@ fn entity_transform(any : Pin<Box<dyn Any>>) -> Pin<Box<Rc<RefCell<Entity>>>> {
     }
 }
 
-impl Entity {
-
-    pub fn new() -> Pin<Box<Rc<RefCell<Entity>>>> {
-        let entity = Box::pin(Rc::new(RefCell::new(Entity {
-            base : BaseObject {
-                id: engine_next_global_id(),
-                parent: Weak::new(),
-            },
+impl Default for Entity {
+    fn default() -> Self {
+        Entity {
+            base : BaseObject::default(),
             myself: Weak::new(),
             children: HashMap::new(),
-            components: HashMap::new(),
-        })));
+            components: Vec::new(),
+        }
+    }
+}
+impl Entity {
+    pub fn new() -> Pin<Box<Rc<RefCell<Entity>>>> {
+        let entity = Box::pin(Rc::new(RefCell::new(Entity::default())));
         let myself = entity.clone();
         entity.borrow_mut().myself = Rc::downgrade(&myself);
         entity
@@ -92,25 +114,31 @@ impl Entity {
         false
     }
 
-    /*
-    pub fn detach_from_parent(&mut self) -> bool {
-        let par = self.base.parent.upgrade();
-        if par.is_none() {
-            println!("child has no parent");
-            false
+    pub fn add_component(&mut self, c: Pin<Box<RefCell<dyn Component>>>) {
+        self.components.push(c);
+    }
+    pub fn get_component<T: Component + 'static>(&'static mut self)
+        -> Option<RefCell<T>> {
+        for c in self.components.iter() {
+            if c.borrow().type_id() == TypeId::of::<T>() {
+                return Some(**c)
+            }
         }
-        else {
-            let parent = par.unwrap();
-            let pinned = parent.borrow_mut().children.remove(&self.base.id);
-            self.base.parent = Weak::new();
-            // keep in global
-            engine_pin(self.base.id, pinned.unwrap());
-            true
+        return None
+    }
+
+    pub fn tick(&mut self, delta: f32, parent: &Option<&&mut Entity>) {
+        for c in self.components.iter_mut() {
+            c.borrow_mut().tick(delta, parent);
         }
-    }*/
+        let opt = Some(&self);
+        for c in self.children.iter() {
+            c.1.borrow_mut().tick(delta, &opt);
+        }
+    }
 }
 
-pub fn Entity_destroy(e: &mut Entity) {
+pub fn entity_destroy(e: &mut Entity) {
     let par = e.base.parent.upgrade();
     if par.is_none() {
         // remove from global
@@ -127,7 +155,7 @@ pub fn Entity_destroy(e: &mut Entity) {
 
 #[no_mangle]
 pub extern "C"
-fn _Entity_new() -> u64 {
+fn Entity_new() -> u64 {
     let entity = Entity::new();
     let addr = addr_of!(*entity) as u64;
     let cid = entity.borrow().base.id;
@@ -137,21 +165,21 @@ fn _Entity_new() -> u64 {
 
 #[no_mangle]
 pub extern "C"
-fn _Entity_add_child(parent: u64, child: u64) -> bool {
+fn Entity_add_child(parent: u64, child: u64) -> bool {
     let p = entity_cast_const(parent);
     let c = entity_cast_const(child);
     p.borrow_mut().add_child(c)
 }
 #[no_mangle]
 pub extern "C"
-fn _Entity_remove_child(parent: u64, child: u64) -> bool {
+fn Entity_remove_child(parent: u64, child: u64) -> bool {
     let p = entity_cast_const(parent);
     let c = entity_cast_const(child);
     p.borrow_mut().remove_child(c)
 }
 #[no_mangle]
 pub extern "C"
-fn _Entity_get_parent(addr: u64) -> u64 {
+fn Entity_get_parent(addr: u64) -> u64 {
     let entity = entity_cast_const(addr);
     let p = entity.borrow().base.parent.upgrade();
     if p.is_none() {
@@ -161,18 +189,29 @@ fn _Entity_get_parent(addr: u64) -> u64 {
         addr_of!(inner) as u64
     }
 }
-/*
-#[no_mangle]
-pub extern "C"
-fn _Entity_detach_from_parent(addr: u64) -> bool {
-    let entity = entity_cast_const(addr);
-    entity.borrow_mut().detach_from_parent()
-}
-*/
 
 #[no_mangle]
 pub extern "C"
-fn _Entity_destroy(addr: u64) {
+fn Entity_destroy(addr: u64) {
     let entity = entity_cast_const(addr);
-    Entity_destroy(entity.borrow_mut().deref_mut());
+    entity_destroy(entity.borrow_mut().deref_mut());
+}
+
+#[no_mangle]
+pub extern "C"
+fn Entity_create_transform_component(addr: u64) -> u64 {
+    let c = TransformComponent::new();
+    let c_addr = addr_of!(*c);
+    Entity_create_component(addr, c);
+    c_addr as u64
+}
+
+#[no_mangle]
+pub extern "C"
+fn Entity_tick(addr: u64, delta: f32, parent_addr: u64) {
+    let entity = entity_cast_const(addr);
+    let mut parent = entity_cast_const(parent_addr).borrow_mut();
+    let mut parent_ref = parent.deref_mut();
+    let opt = if parent_addr != 0 { Some(&(parent_ref)) } else { None } ;
+    entity.borrow_mut().tick(delta, &opt);
 }
