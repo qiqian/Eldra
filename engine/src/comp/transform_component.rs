@@ -13,6 +13,7 @@ pub struct TransformComponent
 {
     pub base: BaseObject,
     pub local_matrix: Matrix4<f32>,
+    pub world_matrix: Matrix4<f32>,
 }
 
 impl Drop for TransformComponent {
@@ -39,18 +40,22 @@ impl TransformComponent {
     }
 }
 impl Component for TransformComponent {
-    fn as_any(&mut self) -> &mut dyn Any { self }
-    fn tick(&mut self, delta: f32, parent: &Option<Rc<RefCell<Entity>>>) {
-        if parent.is_none() {
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn tick(&mut self, delta: f32, ancestor: *const Entity) {
+        if ancestor == (0 as *const Entity) {
+            self.world_matrix = self.local_matrix.clone();
             return;
         }
-
+        let p = unsafe { &(*ancestor) };
+        let tr = p.get_component::<TransformComponent>();
+        self.world_matrix = tr.unwrap().world_matrix * self.local_matrix;
     }
 }
 
-fn transform_component_cast<'a>(addr : &'a u64) -> &'a mut Box<TransformComponent> {
+fn transform_component_cast<'a>(addr : &'a u64) -> &'a mut TransformComponent {
     unsafe {
-        &mut*(*addr as *mut Box<TransformComponent>)
+        &mut*(*addr as *mut TransformComponent)
     }
 }
 

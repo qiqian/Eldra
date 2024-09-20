@@ -2,6 +2,7 @@ use eldra;
 use eldra::engine::{*};
 use eldra::entity::{*};
 use eldra::comp::transform_component::{*};
+use nalgebra::{*};
 
 fn test_entity_create() {
     let parent = Entity_new();
@@ -28,12 +29,18 @@ fn test_transform_component() {
     let c2 = Entity_new();
     let tr2 = Entity_create_transform_component(c2);
     Entity_add_child(c1, c2);
+
+    let mut t1 = Matrix4::<f32>::default();
+    let mut t2 = Matrix4::<f32>::default();
     for i in 0..3 {
         TransformComponent_scale(tr1, 2., 2., 2.);
         TransformComponent_translate(tr1, 1., 1., 1.);
         // update c2
-        Entity_tick(c1, 0.1, 0);
+        Entity_tick(c1, 0.1);
         // check
+        t1.append_nonuniform_scaling_mut(&Vector3::new(2., 2., 2.));
+        t1.append_translation(&Vector3::new(1., 1., 1.));
+        t2 = t1 * t2;
     }
 }
 
