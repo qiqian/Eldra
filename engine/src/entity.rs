@@ -7,6 +7,7 @@ use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
 use std::ops::DerefMut;
 use std::any::TypeId;
+use std::any::type_name;
 use crate::engine::{*};
 use crate::comp::transform_component::TransformComponent;
 
@@ -57,8 +58,7 @@ impl Drop for Entity {
                 let _ = Box::from_raw(leaked);
             };
         }
-        let id = self.base.id;
-        println!("Dropping Entity {id}");
+        engine_notify_drop_object(type_name::<Entity>(), self.base.id);
     }
 }
 

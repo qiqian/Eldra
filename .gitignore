@@ -92,3 +92,4 @@ node_modules
 **/.fleet/run.json
 **/.idea/artifacts/*.xml
 engine/.idea/
+workspace.xml

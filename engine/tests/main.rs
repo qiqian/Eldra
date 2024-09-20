@@ -2,6 +2,9 @@ use eldra;
 use eldra::engine::{*};
 use eldra::entity::{*};
 use eldra::comp::transform_component::{*};
+use std::ffi::CString;
+use std::ffi::CStr;
+use std::os::raw::c_char;
 use nalgebra::{*};
 
 fn test_entity_create() {
@@ -42,11 +45,26 @@ fn test_transform_component() {
         t1.append_translation(&Vector3::new(1., 1., 1.));
         t2 = t1 * t2;
     }
+
+    Entity_destroy(c1);
 }
 
+
+pub fn cstr_to_str(c_buf: *const i8) -> &'static str {
+    unsafe {
+        let cstr = CStr::from_ptr(c_buf);
+        cstr.to_str().unwrap()
+    }
+}
+#[no_mangle]
+pub extern "C"
+fn entity_drop_callback(clz: *const i8, id: u64) {
+    let result = cstr_to_str(clz);
+    println!("{result} {id} dropped")
+}
 #[test]
 fn main() {
-    engine_init();
+    engine_init(entity_drop_callback);
     test_entity_create();
     test_transform_component();
 }

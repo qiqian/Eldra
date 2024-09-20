@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::any::type_name;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::pin::{Pin};
@@ -7,6 +8,7 @@ use nalgebra::{*};
 use crate::comp::uarg::UArg;
 use crate::entity;
 use crate::entity::{*};
+use crate::engine::{*};
 
 #[derive(Default)]
 pub struct TransformComponent
@@ -18,8 +20,7 @@ pub struct TransformComponent
 
 impl Drop for TransformComponent {
     fn drop(&mut self) {
-        let id = self.base.id;
-        println!("Dropping TransformComponent {id}");
+        engine_notify_drop_object(type_name::<TransformComponent>(), self.base.id);
     }
 }
 impl TransformComponent {
