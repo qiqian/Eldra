@@ -1,12 +1,10 @@
 use std::any::Any;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::{Pin};
-use std::ptr::{addr_of, from_mut, from_ref};
+use std::ptr::{addr_of, from_ref};
 use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
-use std::ops::DerefMut;
-use std::any::TypeId;
 use std::any::type_name;
 use crate::engine::{*};
 use crate::comp::transform_component::TransformComponent;
@@ -122,9 +120,9 @@ impl Entity {
         }
     }
     pub fn remove_component(&mut self, candidate: *mut dyn Component) -> bool {
-        let mut idx = 0;
+        let idx = 0;
         while idx < self.components.len() {
-            let mut cc : *mut dyn Component = self.components[idx];
+            let cc : *mut dyn Component = self.components[idx];
             if cc == candidate {
                 self.components.remove(idx);
                 // cleanup
@@ -141,7 +139,7 @@ impl Entity {
         self.base.parent.upgrade()
     }
     pub fn get_component<T: Component + 'static>(& self) -> Option<&T> where {
-        for mut c in self.components.iter() {
+        for c in self.components.iter() {
             let cc = unsafe { &**c };
             if cc.as_any().is::<T>() {
                 return cc.as_any().downcast_ref::<T>()
@@ -150,8 +148,8 @@ impl Entity {
         None
     }
     pub fn get_component_mut<T: Component + 'static>(& mut self) -> Option<&mut T> {
-        for mut c in self.components.iter_mut() {
-            let mut cc = unsafe { &mut **c };
+        for c in self.components.iter_mut() {
+            let cc = unsafe { &mut **c };
             if cc.as_any().is::<T>() {
                 return cc.as_any_mut().downcast_mut::<T>()
             }
@@ -161,7 +159,7 @@ impl Entity {
 
     pub fn tick(&mut self, delta: f32, parent: *const Entity) {
         for c in self.components.iter() {
-            let mut cc = unsafe { &mut **c };
+            let cc = unsafe { &mut **c };
             cc.tick(delta, parent);
         }
         let me: *const Entity = from_ref(self);

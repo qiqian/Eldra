@@ -2,9 +2,7 @@ use eldra;
 use eldra::engine::{*};
 use eldra::entity::{*};
 use eldra::comp::transform_component::{*};
-use std::ffi::CString;
 use std::ffi::CStr;
-use std::os::raw::c_char;
 use nalgebra::{*};
 
 fn test_entity_create() {

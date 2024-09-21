@@ -3,9 +3,7 @@ use std::collections::{HashMap};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use once_cell::sync::OnceCell;
-use std::os::raw::{c_int};
 use std::ffi::CString;
-use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::rc::Rc;
 
