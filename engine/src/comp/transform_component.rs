@@ -18,9 +18,6 @@ impl Drop for TransformComponent {
     }
 }
 impl TransformComponent {
-    pub fn new() -> Self {
-        TransformComponent::default()
-    }
     pub fn translate(&mut self, v: &Vector3<f32>) {
         self.local_matrix.append_translation(v);
     }
@@ -34,16 +31,19 @@ impl TransformComponent {
         self.local_matrix.append_nonuniform_scaling_mut(scale);
     }
 }
+impl Uniq for TransformComponent {
+    fn is_uniq() -> bool { true }
+}
 impl Component for TransformComponent {
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
-    fn tick(&mut self, delta: f32, ancestor: *const Entity) {
-        if ancestor == (0 as *const Entity) {
+    fn tick(&mut self, delta: f32, ancestor: &Option<&Components>) {
+        if ancestor.is_none() {
             self.world_matrix = self.local_matrix.clone();
             return;
         }
         let p = unsafe { &(*ancestor) };
-        let tr = p.get_component::<TransformComponent>();
+        let tr = unsafe { p.unwrap_unchecked().get_component::<TransformComponent>() };
         self.world_matrix = tr.unwrap().world_matrix * self.local_matrix;
     }
 }

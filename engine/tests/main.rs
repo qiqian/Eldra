@@ -27,6 +27,9 @@ fn test_entity_create() {
 fn test_transform_component() {
     let c1 = Entity_new();
     let tr1 = Entity_create_transform_component(c1);
+    assert_eq!(Entity_create_transform_component(c1), 0);
+    let tr1 = Entity_remove_component(c1, tr1);
+    assert_ne!(Entity_create_transform_component(c1), 0);
     let c2 = Entity_new();
     let tr2 = Entity_create_transform_component(c2);
     Entity_add_child(c1, c2);

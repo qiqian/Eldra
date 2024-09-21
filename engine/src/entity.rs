@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::{Pin};
@@ -6,6 +6,7 @@ use std::ptr::{addr_of, from_ref};
 use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
 use std::any::type_name;
+use std::ops::{Deref, DerefMut};
 use crate::engine::{*};
 use crate::comp::transform_component::TransformComponent;
 
@@ -28,8 +29,114 @@ impl Default for BaseObject {
 pub trait Component {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn tick(&mut self, delta: f32, ancestor: *const Entity);
+    fn tick(&mut self, delta: f32, ancestor: &Option<&Components>);
 }
+pub trait Uniq {
+    fn is_uniq() -> bool;
+}
+#[derive(Default)]
+pub struct Components
+{
+    uniq_comp: HashMap<TypeId, *mut dyn Component>,
+    // component pointer is leaked into entity to work around trait conversion issue
+    // this is safe because they have the same lifecycle, just do cleanup when removing the component
+    multi_comp: Vec<*mut dyn Component>,
+}
+impl Drop for Components {
+    fn drop(&mut self) {
+        for c in self.uniq_comp.values_mut() {
+            unsafe {
+                // cleanup
+                let leaked = *c;
+                let _ = Box::from_raw(leaked);
+            };
+        }
+        for c in self.multi_comp.iter() {
+            unsafe {
+                // cleanup
+                let leaked = *c;
+                let _ = Box::from_raw(leaked);
+            };
+        }
+    }
+}
+impl Components {
+    pub fn create_component<T: Component + Uniq + Default + 'static>(&mut self) -> *mut T {
+        if T::is_uniq() && self.uniq_comp.contains_key(&TypeId::of::<T>()) {
+            eprintln!("can't duplicate uniq component");
+            return 0 as *mut T
+        }
+        let pinned = unsafe { //leak it
+            Box::into_raw(Pin::into_inner_unchecked(Box::pin(T::default()))) };
+        if T::is_uniq() {
+            self.uniq_comp.insert(TypeId::of::<T>(), pinned);
+        }
+        else {
+            self.multi_comp.push(pinned);
+        }
+        pinned
+    }
+    pub fn remove_component(&mut self, candidate: *mut dyn Component) -> bool {
+        self.uniq_comp.remove(&candidate.type_id());
+
+        let idx = 0;
+        while idx < self.multi_comp.len() {
+            let cc : *mut dyn Component = self.multi_comp[idx];
+            if cc == candidate {
+                self.multi_comp.remove(idx);
+                // cleanup
+                unsafe { let _ = Box::from_raw(candidate); }
+                return true
+            }
+        }
+        false
+    }
+    pub fn get_component<T: Component + Uniq + 'static>(& self) -> Option<&T> where {
+        match T::is_uniq() {
+            true => {
+                match self.uniq_comp.get(&TypeId::of::<T>()) {
+                    Some(cc) => {
+                        let c = unsafe { &**cc };
+                        c.as_any().downcast_ref::<T>()
+                    },
+                    None => None,
+                }
+            },
+            false => {
+                for c in self.multi_comp.iter() {
+                    let cc = unsafe { &**c };
+                    if cc.as_any().is::<T>() {
+                        return cc.as_any().downcast_ref::<T>()
+                    }
+                }
+                None
+            }
+        }
+    }
+    pub fn get_component_mut<T: Component + Uniq + 'static>(& mut self) -> Option<&mut T> {
+        match T::is_uniq() {
+            true => {
+                match self.uniq_comp.get_mut(&TypeId::of::<T>()) {
+                    Some(cc) => {
+                        let mut c = unsafe { &mut **cc };
+                        c.as_any_mut().downcast_mut::<T>()
+                    },
+                    None => None,
+                }
+            }
+            false => {
+                for c in self.multi_comp.iter_mut() {
+                    let cc = unsafe { &mut **c };
+                    if cc.as_any().is::<T>() {
+                        return cc.as_any_mut().downcast_mut::<T>()
+                    }
+                }
+                None
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Entity
 {
@@ -42,21 +149,13 @@ pub struct Entity
     // to contain a weak self pointer, we must use Rc
     // but Rc is readonly, that leads to Rc<RefCell<_>>
     children: HashMap<u64, Pin<Rc<RefCell<Entity>>>>,
-    // component pointer is leaked into entity to work around trait conversion issue
-    // this is safe because they have the same lifecycle, just do cleanup when removing the component
-    components: Vec<*mut dyn Component>,
+
+    components: Components,
 }
 
 impl Drop for Entity {
     fn drop(&mut self) {
         engine_notify_drop_object(type_name::<Entity>(), self.base.id);
-        for c in self.components.iter() {
-            unsafe {
-                // cleanup
-                let leaked = *c;
-                let _ = Box::from_raw(leaked);
-            };
-        }
     }
 }
 
@@ -111,60 +210,29 @@ impl Entity {
         }
     }
 
-    pub fn add_component<T: Component + 'static>(&mut self, c: T) -> *mut T {
-        unsafe {
-            //leak it
-            let pinned = Box::into_raw(Pin::into_inner_unchecked(Box::pin(c)));
-            self.components.push(pinned);
-            pinned
-        }
-    }
-    pub fn remove_component(&mut self, candidate: *mut dyn Component) -> bool {
-        let idx = 0;
-        while idx < self.components.len() {
-            let cc : *mut dyn Component = self.components[idx];
-            if cc == candidate {
-                self.components.remove(idx);
-                // cleanup
-                unsafe { let _ = Box::from_raw(candidate); }
-                return true
-            }
-        }
-        false
-    }
     pub fn has_parent(&self) -> bool {
         self.get_parent().is_some()
     }
     pub fn get_parent(&self) -> Option<Rc<RefCell<Entity>>> {
         self.base.parent.upgrade()
     }
-    pub fn get_component<T: Component + 'static>(& self) -> Option<&T> where {
-        for c in self.components.iter() {
-            let cc = unsafe { &**c };
-            if cc.as_any().is::<T>() {
-                return cc.as_any().downcast_ref::<T>()
-            }
-        }
-        None
+    pub fn get_component<T: Component + Uniq + 'static>(& self) -> Option<&T> where {
+        self.components.get_component::<T>()
     }
-    pub fn get_component_mut<T: Component + 'static>(& mut self) -> Option<&mut T> {
-        for c in self.components.iter_mut() {
-            let cc = unsafe { &mut **c };
-            if cc.as_any().is::<T>() {
-                return cc.as_any_mut().downcast_mut::<T>()
-            }
-        }
-        None
+    pub fn get_component_mut<T: Component + Uniq + 'static>(& mut self) -> Option<&mut T> {
+        self.components.get_component_mut::<T>()
     }
-
-    pub fn tick(&mut self, delta: f32, parent: *const Entity) {
-        for c in self.components.iter() {
+    pub fn tick(&mut self, delta: f32, parent: &Option<&Components>) {
+        for c in self.components.uniq_comp.iter() {
+            let cc = unsafe { &mut **c.1 };
+            cc.tick(delta, parent);
+        }
+        for c in self.components.multi_comp.iter() {
             let cc = unsafe { &mut **c };
             cc.tick(delta, parent);
         }
-        let me: *const Entity = from_ref(self);
         for c in self.children.iter() {
-            c.1.borrow_mut().tick(delta, me);
+            c.1.borrow_mut().tick(delta, &Some(&self.components));
         }
     }
 }
@@ -238,10 +306,16 @@ fn Entity_destroy(addr: u64) {
 #[no_mangle]
 pub extern "C"
 fn Entity_create_transform_component(addr: u64) -> u64 {
-    let c = TransformComponent::new();
     let entity = entity_cast(&addr);
     let mut e = entity.borrow_mut();
-    e.add_component(c) as u64
+    e.components.create_component::<TransformComponent>() as u64
+}
+#[no_mangle]
+pub extern "C"
+fn Entity_remove_component(e: u64, c: u64) -> bool {
+    let entity = entity_cast(&e);
+    let mut e = entity.borrow_mut();
+    e.components.remove_component(unsafe { &mut*(c as *mut dyn Component) })
 }
 
 #[no_mangle]
@@ -252,5 +326,7 @@ fn Entity_tick(addr: u64, delta: f32) {
         eprintln!("can't tick non-root entity");
         return
     }
-    entity.borrow_mut().tick(delta, 0 as *const Entity);
+    let mut b = entity.borrow_mut();
+    let mut e = b.deref_mut();
+    e.tick(delta, &None);
 }
