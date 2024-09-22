@@ -2,15 +2,17 @@ use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::{Pin};
-use std::ptr::{addr_of, from_ref};
+use std::ptr::{addr_of};
 use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
 use std::any::type_name;
-use std::ops::{Deref, DerefMut};
+use std::ops::{DerefMut};
 use eldra_macro::{DropNotify, Reflection};
 use crate::engine::{*};
+use crate::reflection::{*};
 use crate::comp::transform_component::TransformComponent;
 
+#[derive(Debug)]
 pub struct BaseObject
 {
     pub id: u64,
@@ -27,26 +29,23 @@ impl Default for BaseObject {
     }
 }
 
-pub trait IReflectable {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn real_type_id(&self) -> TypeId;
-}
-pub trait IComponentAttr {
+pub trait ComponentAttr {
     fn is_comp_uniq(&self) -> bool;
 }
-pub trait Component : IReflectable + IComponentAttr {
+pub trait Component : Reflectable + ComponentAttr {
     fn tick(&mut self, delta: f32, ancestor: &Option<&Components>);
 }
 pub trait Uniq {
     fn is_uniq() -> bool;
 }
-#[derive(Default)]
+#[derive(Debug,Default,Reflection)]
 pub struct Components
 {
+    #[serialize]
     uniq_comp: HashMap<TypeId, *mut dyn Component>,
     // component pointer is leaked into entity to work around trait conversion issue
     // this is safe because they have the same lifecycle, just do cleanup when removing the component
+    #[serialize]
     multi_comp: Vec<*mut dyn Component>,
 }
 impl Drop for Components {
@@ -86,7 +85,7 @@ impl Components {
     pub fn remove_component(&mut self, candidate: *mut dyn Component) -> bool {
         let c = unsafe{ &mut *candidate };
         if c.is_comp_uniq() {
-            if (self.uniq_comp.remove(&c.real_type_id()).is_some()) {
+            if self.uniq_comp.remove(&c.real_type_id()).is_some() {
                 unsafe { let _ = Box::from_raw(candidate); }
                 return true
             }
@@ -133,7 +132,7 @@ impl Components {
             true => {
                 match self.uniq_comp.get_mut(&TypeId::of::<T>()) {
                     Some(cc) => {
-                        let mut c = unsafe { &mut **cc };
+                        let c = unsafe { &mut **cc };
                         c.as_any_mut().downcast_mut::<T>()
                     },
                     None => None,
@@ -152,7 +151,7 @@ impl Components {
     }
 }
 
-#[derive(Default,Reflection,DropNotify)]
+#[derive(Debug,Default,Reflection,DropNotify)]
 pub struct Entity
 {
     pub base: BaseObject,
@@ -163,12 +162,15 @@ pub struct Entity
     marker_address: u64,
     // to contain a weak self pointer, we must use Rc
     // but Rc is readonly, that leads to Rc<RefCell<_>>
+    #[display="Children"]
+    #[serialize]
     children: HashMap<u64, Pin<Rc<RefCell<Entity>>>>,
-
+    #[display="Components"]
+    #[serialize]
     components: Components,
 }
 
-fn entity_cast(addr : &u64) -> Rc<RefCell<Entity>> {
+pub fn entity_cast(addr : &u64) -> Rc<RefCell<Entity>> {
     unsafe {
         (&mut *((*addr) as *mut RefCell<Entity>)).
             borrow().myself.upgrade().unwrap_unchecked().clone()
@@ -350,6 +352,6 @@ fn Entity_tick(addr: u64, delta: f32) {
         return
     }
     let mut b = entity.borrow_mut();
-    let mut e = b.deref_mut();
+    let e = b.deref_mut();
     e.tick(delta, &None);
 }

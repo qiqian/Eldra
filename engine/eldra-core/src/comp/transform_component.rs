@@ -1,21 +1,29 @@
 use std::any::{Any, TypeId};
 use std::any::type_name;
 use nalgebra::{*};
-use eldra_macro::{ComponentAttr, DropNotify, Reflection};
+use eldra_macro::{*};
 use crate::entity::{*};
 use crate::engine::{*};
+use crate::reflection::{*};
 
 #[derive(Default,Reflection,DropNotify,ComponentAttr)]
 pub struct TransformComponent
 {
     pub base: BaseObject,
+
+    #[display="Local Matrix"]
+    #[serialize]
     pub local_matrix: Matrix4<f32>,
+
+    #[display="World Matrix"]
+    #[serialize]
+    #[readonly]
     pub world_matrix: Matrix4<f32>,
 }
 
 impl TransformComponent {
     pub fn translate(&mut self, v: &Vector3<f32>) {
-        self.local_matrix.append_translation(v);
+        let _ = self.local_matrix.append_translation(v);
     }
 
     pub fn rotate(&mut self, angles: &Vector3<f32>) {
@@ -31,12 +39,12 @@ impl Uniq for TransformComponent {
     fn is_uniq() -> bool { true }
 }
 impl Component for TransformComponent {
-    fn tick(&mut self, delta: f32, ancestor: &Option<&Components>) {
+    fn tick(&mut self, _delta: f32, ancestor: &Option<&Components>) {
         if ancestor.is_none() {
             self.world_matrix = self.local_matrix.clone();
             return;
         }
-        let p = unsafe { &(*ancestor) };
+        let p = &(*ancestor);
         let tr = unsafe { p.unwrap_unchecked().get_component::<TransformComponent>() };
         self.world_matrix = tr.unwrap().world_matrix * self.local_matrix;
     }

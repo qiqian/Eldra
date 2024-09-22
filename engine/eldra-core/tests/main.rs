@@ -2,6 +2,7 @@ use eldra;
 use eldra::engine::{*};
 use eldra::entity::{*};
 use eldra::comp::transform_component::{*};
+use eldra::reflection::{*};
 use std::ffi::CStr;
 use nalgebra::{*};
 
@@ -34,16 +35,19 @@ fn test_transform_component() {
     let tr2 = Entity_create_transform_component(c2);
     Entity_add_child(c1, c2);
 
+    let _info1 = entity_cast(&c1).borrow().reflect_info();
+    let _info2 = unsafe { (&*tr1.unwrap()).reflect_info() };
+
     let mut t1 = Matrix4::<f32>::default();
     let mut t2 = Matrix4::<f32>::default();
-    for i in 0..3 {
+    for _i in 0..3 {
         TransformComponent_scale(tr1, 2., 2., 2.);
         TransformComponent_translate(tr1, 1., 1., 1.);
         // update c2
         Entity_tick(c1, 0.1);
         // check
         t1.append_nonuniform_scaling_mut(&Vector3::new(2., 2., 2.));
-        t1.append_translation(&Vector3::new(1., 1., 1.));
+        let _ = t1.append_translation(&Vector3::new(1., 1., 1.));
         t2 = t1 * t2;
     }
 
@@ -58,7 +62,7 @@ pub fn cstr_to_str(c_buf: *const i8) -> &'static str {
     }
 }
 #[no_mangle]
-pub extern "C"
+extern "C"
 fn entity_drop_callback(clz: *const i8, id: u64) {
     let result = cstr_to_str(clz);
     println!("{result} {id} dropped")
