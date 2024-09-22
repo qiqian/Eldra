@@ -7,6 +7,7 @@ use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
 use std::any::type_name;
 use std::ops::{Deref, DerefMut};
+use eldra_macro::{DropNotify, Reflection};
 use crate::engine::{*};
 use crate::comp::transform_component::TransformComponent;
 
@@ -26,11 +27,15 @@ impl Default for BaseObject {
     }
 }
 
-pub trait Component {
+pub trait IReflectable {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn real_type_id(&self) -> TypeId;
+}
+pub trait IComponentAttr {
     fn is_comp_uniq(&self) -> bool;
+}
+pub trait Component : IReflectable + IComponentAttr {
     fn tick(&mut self, delta: f32, ancestor: &Option<&Components>);
 }
 pub trait Uniq {
@@ -147,7 +152,7 @@ impl Components {
     }
 }
 
-#[derive(Default)]
+#[derive(Default,Reflection,DropNotify)]
 pub struct Entity
 {
     pub base: BaseObject,
@@ -161,12 +166,6 @@ pub struct Entity
     children: HashMap<u64, Pin<Rc<RefCell<Entity>>>>,
 
     components: Components,
-}
-
-impl Drop for Entity {
-    fn drop(&mut self) {
-        engine_notify_drop_object(type_name::<Entity>(), self.base.id);
-    }
 }
 
 fn entity_cast(addr : &u64) -> Rc<RefCell<Entity>> {

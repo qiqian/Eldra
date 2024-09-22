@@ -1,10 +1,11 @@
 use std::any::{Any, TypeId};
 use std::any::type_name;
 use nalgebra::{*};
+use eldra_macro::{ComponentAttr, DropNotify, Reflection};
 use crate::entity::{*};
 use crate::engine::{*};
 
-#[derive(Default)]
+#[derive(Default,Reflection,DropNotify,ComponentAttr)]
 pub struct TransformComponent
 {
     pub base: BaseObject,
@@ -12,11 +13,6 @@ pub struct TransformComponent
     pub world_matrix: Matrix4<f32>,
 }
 
-impl Drop for TransformComponent {
-    fn drop(&mut self) {
-        engine_notify_drop_object(type_name::<TransformComponent>(), self.base.id);
-    }
-}
 impl TransformComponent {
     pub fn translate(&mut self, v: &Vector3<f32>) {
         self.local_matrix.append_translation(v);
@@ -35,10 +31,6 @@ impl Uniq for TransformComponent {
     fn is_uniq() -> bool { true }
 }
 impl Component for TransformComponent {
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
-    fn real_type_id(&self) -> TypeId { TypeId::of::<Self>() }
-    fn is_comp_uniq(&self) -> bool { Self::is_uniq() }
     fn tick(&mut self, delta: f32, ancestor: &Option<&Components>) {
         if ancestor.is_none() {
             self.world_matrix = self.local_matrix.clone();
