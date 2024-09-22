@@ -29,6 +29,8 @@ impl Default for BaseObject {
 pub trait Component {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn real_type_id(&self) -> TypeId;
+    fn is_comp_uniq(&self) -> bool;
     fn tick(&mut self, delta: f32, ancestor: &Option<&Components>);
 }
 pub trait Uniq {
@@ -61,10 +63,10 @@ impl Drop for Components {
     }
 }
 impl Components {
-    pub fn create_component<T: Component + Uniq + Default + 'static>(&mut self) -> *mut T {
+    pub fn create_component<T: Component + Uniq + Default + 'static>(&mut self) -> Option<*mut T> {
         if T::is_uniq() && self.uniq_comp.contains_key(&TypeId::of::<T>()) {
             eprintln!("can't duplicate uniq component");
-            return 0 as *mut T
+            return None
         }
         let pinned = unsafe { //leak it
             Box::into_raw(Pin::into_inner_unchecked(Box::pin(T::default()))) };
@@ -74,22 +76,30 @@ impl Components {
         else {
             self.multi_comp.push(pinned);
         }
-        pinned
+        Some(pinned)
     }
     pub fn remove_component(&mut self, candidate: *mut dyn Component) -> bool {
-        self.uniq_comp.remove(&candidate.type_id());
-
-        let idx = 0;
-        while idx < self.multi_comp.len() {
-            let cc : *mut dyn Component = self.multi_comp[idx];
-            if cc == candidate {
-                self.multi_comp.remove(idx);
-                // cleanup
+        let c = unsafe{ &mut *candidate };
+        if c.is_comp_uniq() {
+            if (self.uniq_comp.remove(&c.real_type_id()).is_some()) {
                 unsafe { let _ = Box::from_raw(candidate); }
                 return true
             }
+            false
         }
-        false
+        else {
+            let idx = 0;
+            while idx < self.multi_comp.len() {
+                let cc: *mut dyn Component = self.multi_comp[idx];
+                if cc == candidate {
+                    self.multi_comp.remove(idx);
+                    // cleanup
+                    unsafe { let _ = Box::from_raw(candidate); }
+                    return true
+                }
+            }
+            false
+        }
     }
     pub fn get_component<T: Component + Uniq + 'static>(& self) -> Option<&T> where {
         match T::is_uniq() {
@@ -303,19 +313,33 @@ fn Entity_destroy(addr: u64) {
     entity_destroy(&entity);
 }
 
-#[no_mangle]
-pub extern "C"
-fn Entity_create_transform_component(addr: u64) -> u64 {
-    let entity = entity_cast(&addr);
-    let mut e = entity.borrow_mut();
-    e.components.create_component::<TransformComponent>() as u64
+fn entity_component_to_trait<T>(opt: Option<*mut T>) -> Option<*mut dyn Component>
+    where T: Component + Uniq + Default + 'static
+{
+    match opt {
+        Some(ret) => { Some(ret as *mut dyn Component) },
+        None => None,
+    }
 }
 #[no_mangle]
 pub extern "C"
-fn Entity_remove_component(e: u64, c: u64) -> bool {
+fn Entity_create_transform_component(addr: u64) -> Option<*mut dyn Component> {
+    let entity = entity_cast(&addr);
+    let mut e = entity.borrow_mut();
+    let c = e.components.create_component::<TransformComponent>();
+    entity_component_to_trait(c)
+}
+#[no_mangle]
+pub extern "C"
+fn Entity_remove_component(e: u64, tc: Option<*mut dyn Component>) -> bool {
+    if tc.is_none() {
+        return false
+    }
     let entity = entity_cast(&e);
     let mut e = entity.borrow_mut();
-    e.components.remove_component(unsafe { &mut*(c as *mut dyn Component) })
+    unsafe {
+        e.components.remove_component(tc.unwrap_unchecked())
+    }
 }
 
 #[no_mangle]

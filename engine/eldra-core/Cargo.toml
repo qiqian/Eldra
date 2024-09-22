@@ -1,0 +1,14 @@
+[package]
+name = "eldra-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "eldra"
+crate-type = ["cdylib", "lib", "staticlib"]
+
+[dependencies]
+nalgebra = "0.32.6"
+fyrox-math = "0.2.0"
+once_cell = "1.19.0"
+lazy_static = "1.5.0"

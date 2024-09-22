@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::any::type_name;
 use nalgebra::{*};
 use crate::entity::{*};
@@ -37,6 +37,8 @@ impl Uniq for TransformComponent {
 impl Component for TransformComponent {
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn real_type_id(&self) -> TypeId { TypeId::of::<Self>() }
+    fn is_comp_uniq(&self) -> bool { Self::is_uniq() }
     fn tick(&mut self, delta: f32, ancestor: &Option<&Components>) {
         if ancestor.is_none() {
             self.world_matrix = self.local_matrix.clone();
@@ -48,9 +50,10 @@ impl Component for TransformComponent {
     }
 }
 
-fn transform_component_cast<'a>(addr : &'a u64) -> &'a mut TransformComponent {
+fn transform_component_cast<'a>(addr : &Option<*mut dyn Component>) -> &'a mut TransformComponent {
     unsafe {
-        &mut*(*addr as *mut TransformComponent)
+        let a = addr.unwrap_unchecked();
+        &mut*(a as *mut TransformComponent)
     }
 }
 
@@ -59,21 +62,21 @@ fn transform_component_cast<'a>(addr : &'a u64) -> &'a mut TransformComponent {
 
 #[no_mangle]
 pub extern "C"
-fn TransformComponent_translate(addr: u64, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(&addr);
+fn TransformComponent_translate(me: Option<*mut dyn Component>, x : f32, y : f32, z : f32) {
+    let t = transform_component_cast(&me);
     t.translate(&Vector3::new(x, y, z));
 }
 
 #[no_mangle]
 pub extern "C"
-fn TransformComponent_rotate(addr: u64, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(&addr);
+fn TransformComponent_rotate(me: Option<*mut dyn Component>, x : f32, y : f32, z : f32) {
+    let t = transform_component_cast(&me);
     t.rotate(&Vector3::new(x, y, z));
 }
 
 #[no_mangle]
 pub extern "C"
-fn TransformComponent_scale(addr: u64, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(&addr);
+fn TransformComponent_scale(me: Option<*mut dyn Component>, x : f32, y : f32, z : f32) {
+    let t = transform_component_cast(&me);
     t.scale(&Vector3::new(x, y, z));
 }
