@@ -1,4 +1,6 @@
+use std::ptr::addr_of;
 use eldra;
+use eldra::{*};
 use eldra::engine::{*};
 use eldra::entity::{*};
 use eldra::comp::transform_component::{*};
@@ -28,15 +30,17 @@ fn test_entity_create() {
 fn test_transform_component() {
     let c1 = Entity_new();
     let tr1 = Entity_create_transform_component(c1);
-    assert_eq!(Entity_create_transform_component(c1).is_none(), true);
+    assert_eq!(Entity_create_transform_component(c1), 0);
     assert_eq!(Entity_remove_component(c1, tr1), true);
-    assert_eq!(Entity_create_transform_component(c1).is_some(), true);
+    assert_ne!(Entity_create_transform_component(c1), 0);
     let c2 = Entity_new();
     let tr2 = Entity_create_transform_component(c2);
     Entity_add_child(c1, c2);
 
     let _info1 = entity_cast(&c1).borrow().reflect_info();
-    let _info2 = unsafe { (&*tr1.unwrap()).reflect_info() };
+    let _info2 = unsafe {
+            let mut comp = decode_component!(tr2).as_deref_mut().unwrap_unchecked();
+            comp.as_any_mut().downcast_mut::<TransformComponent>().unwrap_unchecked().reflect_info() };
 
     let mut t1 = Matrix4::<f32>::default();
     let mut t2 = Matrix4::<f32>::default();

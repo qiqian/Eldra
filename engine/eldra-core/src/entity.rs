@@ -126,13 +126,6 @@ pub struct Entity
     components: Components,
 }
 
-pub fn entity_cast(addr : &u64) -> Rc<RefCell<Entity>> {
-    unsafe {
-        (&mut *((*addr) as *mut RefCell<Entity>)).
-            borrow().myself.upgrade().unwrap_unchecked().clone()
-    }
-}
-
 impl Entity {
     // caller should decide to whether engine_pin or root_entity.add_child for this new entity
     pub fn new() -> Pin<Rc<RefCell<Entity>>> {
@@ -225,6 +218,13 @@ fn Entity_new() -> u64 {
     addr
 }
 
+pub fn entity_cast(addr : &u64) -> Rc<RefCell<Entity>> {
+    unsafe {
+        (&mut *((*addr) as *mut RefCell<Entity>)).
+            borrow().myself.upgrade().unwrap_unchecked().clone()
+    }
+}
+
 #[no_mangle]
 pub extern "C"
 fn Entity_add_child(parent: u64, child: u64) -> bool {
@@ -265,31 +265,39 @@ fn Entity_destroy(addr: u64) {
     entity_destroy(&entity);
 }
 
-fn entity_component_to_trait<T>(opt: Option<*mut T>) -> Option<*mut dyn Component>
-    where T: Component + Uniq + Default + 'static
-{
-    match opt {
-        Some(ret) => { Some(ret as *mut dyn Component) },
-        None => None,
-    }
+#[macro_export]
+macro_rules! decode_component {
+    ( $x:expr ) => {
+        {
+            unsafe { (&mut*(addr_of!($x) as *mut u64 as *mut Option<&mut Box<dyn Component>>)) }
+        }
+    };
 }
 #[no_mangle]
 pub extern "C"
-fn Entity_create_transform_component(addr: u64) -> Option<&'static Box<dyn Component>> {
+fn Entity_create_transform_component(addr: u64) -> u64 {
     let entity = entity_cast(&addr);
     let mut e = entity.borrow_mut();
-    e.components.create_component::<TransformComponent>()
+    let opt = e.components.create_component::<TransformComponent>();
+    unsafe { *(addr_of!(opt) as *const u64) }
 }
 #[no_mangle]
 pub extern "C"
-fn Entity_remove_component(e: u64, tc: Option<&'static Box<dyn Component>>) -> bool {
+fn Entity_remove_component(e: u64, c: u64) -> bool {
+    let tc = decode_component!(c);
     if tc.is_none() {
         return false
     }
     let entity = entity_cast(&e);
     let mut e = entity.borrow_mut();
     unsafe {
-        e.components.remove_component(tc.unwrap_unchecked())
+        match decode_component!(c) {
+            Some(comp) => {
+                e.components.remove_component(comp);
+                true
+            },
+            None => false
+        }
     }
 }
 

@@ -1,7 +1,9 @@
+use std::ptr::addr_of;
 use std::any::{Any, TypeId};
 use std::any::type_name;
 use nalgebra::{*};
 use eldra_macro::{*};
+use crate::decode_component;
 use crate::entity::{*};
 use crate::engine::{*};
 use crate::reflection::{*};
@@ -62,21 +64,51 @@ fn transform_component_cast<'a>(addr : &Option<*mut dyn Component>) -> &'a mut T
 
 #[no_mangle]
 pub extern "C"
-fn TransformComponent_translate(me: Option<*mut dyn Component>, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(&me);
-    t.translate(&Vector3::new(x, y, z));
+fn TransformComponent_translate(me: u64, x : f32, y : f32, z : f32) -> bool {
+    match decode_component!(me) {
+        Some(c) => {
+            match c.as_any_mut().downcast_mut::<TransformComponent>() {
+                Some(tr) => {
+                    tr.translate(&Vector3::new(x, y, z));
+                    true
+                },
+                None => false
+            }
+        },
+        None => false
+    }
 }
 
 #[no_mangle]
 pub extern "C"
-fn TransformComponent_rotate(me: Option<*mut dyn Component>, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(&me);
-    t.rotate(&Vector3::new(x, y, z));
+fn TransformComponent_rotate(me: u64, x : f32, y : f32, z : f32) -> bool {
+    match decode_component!(me) {
+        Some(c) => {
+            match c.as_any_mut().downcast_mut::<TransformComponent>() {
+                Some(tr) => {
+                    tr.rotate(&Vector3::new(x, y, z));
+                    true
+                },
+                None => false
+            }
+        },
+        None => false
+    }
 }
 
 #[no_mangle]
 pub extern "C"
-fn TransformComponent_scale(me: Option<*mut dyn Component>, x : f32, y : f32, z : f32) {
-    let t = transform_component_cast(&me);
-    t.scale(&Vector3::new(x, y, z));
+fn TransformComponent_scale(me: u64, x : f32, y : f32, z : f32) -> bool{
+    match decode_component!(me) {
+        Some(c) => {
+            match c.as_any_mut().downcast_mut::<TransformComponent>() {
+                Some(tr) => {
+                    tr.scale(&Vector3::new(x, y, z));
+                    true
+                },
+                None => false
+            }
+        },
+        None => false
+    }
 }
