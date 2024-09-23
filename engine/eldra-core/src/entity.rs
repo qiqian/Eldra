@@ -38,55 +38,35 @@ pub trait Component : Reflectable + ComponentAttr {
 pub trait Uniq {
     fn is_uniq() -> bool;
 }
-#[derive(Debug,Default,Reflection)]
+#[derive(Default,Reflection)]
 pub struct Components
 {
     #[serialize]
-    uniq_comp: HashMap<TypeId, *mut dyn Component>,
+    uniq_comp: HashMap<TypeId, Box<dyn Component>>,
     // component pointer is leaked into entity to work around trait conversion issue
     // this is safe because they have the same lifecycle, just do cleanup when removing the component
     #[serialize]
-    multi_comp: Vec<*mut dyn Component>,
-}
-impl Drop for Components {
-    fn drop(&mut self) {
-        for c in self.uniq_comp.values_mut() {
-            unsafe {
-                // cleanup
-                let leaked = *c;
-                let _ = Box::from_raw(leaked);
-            };
-        }
-        for c in self.multi_comp.iter() {
-            unsafe {
-                // cleanup
-                let leaked = *c;
-                let _ = Box::from_raw(leaked);
-            };
-        }
-    }
+    multi_comp: Vec<Box<dyn Component>>,
 }
 impl Components {
-    pub fn create_component<T: Component + Uniq + Default + 'static>(&mut self) -> Option<*mut T> {
+    pub fn create_component<T: Component + Uniq + Default + 'static>(&mut self) -> Option<&Box<dyn Component>> {
         if T::is_uniq() && self.uniq_comp.contains_key(&TypeId::of::<T>()) {
             eprintln!("can't duplicate uniq component");
             return None
         }
-        let pinned = unsafe { //leak it
-            Box::into_raw(Pin::into_inner_unchecked(Box::pin(T::default()))) };
+        let pinned = Box::new(T::default());
         if T::is_uniq() {
             self.uniq_comp.insert(TypeId::of::<T>(), pinned);
+            self.uniq_comp.get(&TypeId::of::<T>())
         }
         else {
             self.multi_comp.push(pinned);
+            Some(&self.multi_comp[self.multi_comp.len() - 1])
         }
-        Some(pinned)
     }
-    pub fn remove_component(&mut self, candidate: *mut dyn Component) -> bool {
-        let c = unsafe{ &mut *candidate };
-        if c.is_comp_uniq() {
-            if self.uniq_comp.remove(&c.real_type_id()).is_some() {
-                unsafe { let _ = Box::from_raw(candidate); }
+    pub fn remove_component(&mut self, candidate: &Box<dyn Component>) -> bool {
+        if candidate.is_comp_uniq() {
+            if self.uniq_comp.remove(&candidate.real_type_id()).is_some() {
                 return true
             }
             false
@@ -94,11 +74,9 @@ impl Components {
         else {
             let idx = 0;
             while idx < self.multi_comp.len() {
-                let cc: *mut dyn Component = self.multi_comp[idx];
-                if cc == candidate {
+                let cc = &self.multi_comp[idx];
+                if addr_of!(cc) == addr_of!(candidate) {
                     self.multi_comp.remove(idx);
-                    // cleanup
-                    unsafe { let _ = Box::from_raw(candidate); }
                     return true
                 }
             }
@@ -127,31 +105,9 @@ impl Components {
             }
         }
     }
-    pub fn get_component_mut<T: Component + Uniq + 'static>(& mut self) -> Option<&mut T> {
-        match T::is_uniq() {
-            true => {
-                match self.uniq_comp.get_mut(&TypeId::of::<T>()) {
-                    Some(cc) => {
-                        let c = unsafe { &mut **cc };
-                        c.as_any_mut().downcast_mut::<T>()
-                    },
-                    None => None,
-                }
-            }
-            false => {
-                for c in self.multi_comp.iter_mut() {
-                    let cc = unsafe { &mut **c };
-                    if cc.as_any().is::<T>() {
-                        return cc.as_any_mut().downcast_mut::<T>()
-                    }
-                }
-                None
-            }
-        }
-    }
 }
 
-#[derive(Debug,Default,Reflection,DropNotify)]
+#[derive(Default,Reflection,DropNotify)]
 pub struct Entity
 {
     pub base: BaseObject,
@@ -230,19 +186,14 @@ impl Entity {
     pub fn get_component<T: Component + Uniq + 'static>(& self) -> Option<&T> where {
         self.components.get_component::<T>()
     }
-    pub fn get_component_mut<T: Component + Uniq + 'static>(& mut self) -> Option<&mut T> {
-        self.components.get_component_mut::<T>()
-    }
     pub fn tick(&mut self, delta: f32, parent: &Option<&Components>) {
-        for c in self.components.uniq_comp.iter() {
-            let cc = unsafe { &mut **c.1 };
-            cc.tick(delta, parent);
+        self.components.uniq_comp.iter_mut().map(|c| {
+            c.1.tick(delta, parent);
+        });
+        for c in self.components.multi_comp.iter_mut() {
+            c.tick(delta, parent);
         }
-        for c in self.components.multi_comp.iter() {
-            let cc = unsafe { &mut **c };
-            cc.tick(delta, parent);
-        }
-        for c in self.children.iter() {
+        for c in self.children.iter_mut() {
             c.1.borrow_mut().tick(delta, &Some(&self.components));
         }
     }
@@ -324,15 +275,14 @@ fn entity_component_to_trait<T>(opt: Option<*mut T>) -> Option<*mut dyn Componen
 }
 #[no_mangle]
 pub extern "C"
-fn Entity_create_transform_component(addr: u64) -> Option<*mut dyn Component> {
+fn Entity_create_transform_component(addr: u64) -> Option<&'static Box<dyn Component>> {
     let entity = entity_cast(&addr);
     let mut e = entity.borrow_mut();
-    let c = e.components.create_component::<TransformComponent>();
-    entity_component_to_trait(c)
+    e.components.create_component::<TransformComponent>()
 }
 #[no_mangle]
 pub extern "C"
-fn Entity_remove_component(e: u64, tc: Option<*mut dyn Component>) -> bool {
+fn Entity_remove_component(e: u64, tc: Option<&'static Box<dyn Component>>) -> bool {
     if tc.is_none() {
         return false
     }
@@ -352,6 +302,5 @@ fn Entity_tick(addr: u64, delta: f32) {
         return
     }
     let mut b = entity.borrow_mut();
-    let e = b.deref_mut();
-    e.tick(delta, &None);
+    b.tick(delta, &None);
 }
