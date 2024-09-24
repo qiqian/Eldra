@@ -46,23 +46,32 @@ fn gen_yaml_serilizer<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_
     let mut reflected = quote! {};
     for var in vars {
         let field_tag = var.field.ident.clone().into_token_stream();
-        let field_name = format!("{{}}field_name : {}\n", field_tag.to_string());
-        let field_type = format!("{{}}field_type : {}\n", var.field.ty.clone().to_token_stream().to_string());
+        let field_mark = format!("{{}}{} : \n", field_tag.to_string());
+        reflected.extend(quote! {
+            io.write(format!(#field_mark, indent.clone()).as_bytes());
+        });
+        let field_name = format!("{{}}field_name : \"{}\"\n", field_tag.to_string());
+        let field_type = format!("{{}}field_type : \"{}\"\n",
+             var.field.ty.clone().to_token_stream().to_string().replace(" ", ""));
         let readonly = format!("{{}}readonly : {}\n", var.readonly.to_string());
         reflected.extend(quote! {
-            io.write(format!(#field_name, indent).as_bytes());
-            io.write(format!(#field_type, indent).as_bytes());
-            io.write(format!(#readonly, indent).as_bytes());
+            io.write(format!(#field_type, indent.clone() + "  ").as_bytes());
+            io.write(format!(#readonly, indent.clone() + "  ").as_bytes());
+            io.write(format!(#field_name, indent.clone() + "  ").as_bytes());
         });
         if var.display.is_some() {
             let d = format!("{{}}display_name : {}\n", var.display.clone().unwrap().to_token_stream().to_string());
             reflected.extend(quote! {
-                io.write(format!(#d, indent).as_bytes());
+                io.write(format!(#d, indent.clone() + "  ").as_bytes());
             });
         }
         reflected.extend(quote! {
-            io.write(format!("{}value :\n", indent).as_bytes());
-            self.#field_tag.serialize_yaml(io, indent.clone() + "  ");
+            io.write(format!("{}value : ", indent.clone() + "  ").as_bytes());
+            if self.#field_tag.is_multi_line() {
+                io.write("\n".as_bytes());
+            }
+            self.#field_tag.serialize_yaml(io, indent.clone() + "    ");
+            io.write("\n".as_bytes());
         });
     }
     reflected
@@ -122,6 +131,7 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
         }
 
         impl crate::reflection::Serializable for #name {
+            fn is_multi_line(&self) -> bool { true }
             fn serialize_binary(&self, io: &mut dyn std::io::Write) {
 
             }

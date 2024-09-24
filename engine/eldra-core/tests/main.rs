@@ -57,7 +57,7 @@ fn test_transform_component() {
         t2 = t1 * t2;
     }
 
-    Entity_serialize(c1, CString::new("../../test.yaml").unwrap());
+    Entity_serialize(c1, CString::new("../../bin/test.yaml").unwrap());
 
     Entity_destroy(c1);
 }

@@ -12,6 +12,7 @@ use crate::reflection::{*};
 #[derive(Reflection,DropNotify,ComponentAttr)]
 pub struct TransformComponent
 {
+    #[serialize]
     pub base: BaseObject,
 
     #[display="Local Matrix"]

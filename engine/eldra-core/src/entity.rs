@@ -10,6 +10,7 @@ use std::ffi::CString;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::ops::{Deref, DerefMut};
+use uuid::Uuid;
 use eldra_macro::{DropNotify, Reflection};
 use crate::engine::{*};
 use crate::reflection::{*};
@@ -18,11 +19,17 @@ use crate::comp::transform_component::TransformComponent;
 #[derive(Debug,Reflection)]
 pub struct BaseObject
 {
+    #[serialize]
     pub id: u64,
     #[display="Name"]
     #[serialize]
     pub name : String,
+    #[display="UUID"]
+    #[serialize]
+    pub uid : Uuid,
+
     pub parent: Weak<RefCell<Entity>>,
+
     _marker_: PhantomPinned,
 }
 impl Default for BaseObject {
@@ -31,6 +38,7 @@ impl Default for BaseObject {
         BaseObject {
             id: myid,
             name: myid.to_string(),
+            uid: Uuid::new_v4(),
             parent: Weak::new(),
             _marker_: PhantomPinned,
         }
@@ -43,9 +51,6 @@ pub trait ComponentAttr {
 pub trait Component : Reflectable + ComponentAttr + Serializable {
     fn tick(&mut self, delta: f32, ancestor: &Option<&Components>);
 }
-pub trait Uniq {
-    fn is_uniq() -> bool;
-}
 #[derive(Default,Reflection)]
 pub struct Components
 {
@@ -57,7 +62,9 @@ pub struct Components
     multi_comp: Vec<Box<dyn Component>>,
 }
 impl Components {
-    pub fn create_component<T: Component + Uniq + Default + 'static>(&mut self) -> Option<&Box<dyn Component>> {
+    pub fn create_component<T>(&mut self) -> Option<&Box<dyn Component>>
+        where T: Component + Uniq + Default + 'static
+    {
         if T::is_uniq() && self.uniq_comp.contains_key(&TypeId::of::<T>()) {
             eprintln!("can't duplicate uniq component");
             return None
