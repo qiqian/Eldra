@@ -26,6 +26,7 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
         panic!("You can derive only on a struct!")
     };
 
+    // gather ReflectVarInfo
     let mut reflected = quote! {
         let mut v = std::vec::Vec::new();
     };
@@ -68,6 +69,7 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
     }
     reflected.extend(quote! { v });
 
+    // generate Reflectable trait
     let gen_token = TokenStream::from(quote! {
 
         impl crate::reflection::Reflectable for #name {
@@ -80,6 +82,8 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
             }
         }
     });
+
+    // done
     let _gen_str = gen_token.clone().to_string();
     //println!("REFLECTION : {_gen_str}");
     gen_token

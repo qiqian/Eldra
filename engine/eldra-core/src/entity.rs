@@ -6,7 +6,7 @@ use std::ptr::{addr_of};
 use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
 use std::any::type_name;
-use std::ops::{DerefMut};
+use std::ops::{Deref, DerefMut};
 use eldra_macro::{DropNotify, Reflection};
 use crate::engine::{*};
 use crate::reflection::{*};
@@ -218,51 +218,74 @@ fn Entity_new() -> u64 {
     addr
 }
 
-pub fn entity_cast(addr : &u64) -> Rc<RefCell<Entity>> {
+pub fn entity_cast(addr : &u64) -> Option<Rc<RefCell<Entity>>> {
     unsafe {
-        (&mut *((*addr) as *mut RefCell<Entity>)).
-            borrow().myself.upgrade().unwrap_unchecked().clone()
+        (&mut *((*addr) as *mut RefCell<Entity>)).borrow().myself.upgrade()
     }
 }
-
+fn entity_update<T, F: Fn(Rc<RefCell<Entity>>) -> T>(me: &u64, f: F) -> T where T: Default
+{
+    let entity = entity_cast(me);
+    match entity {
+        Some(t) => f(t),
+        None => T::default(),
+    }
+}
 #[no_mangle]
 pub extern "C"
 fn Entity_add_child(parent: u64, child: u64) -> bool {
-    let p = entity_cast(&parent);
-    let c = entity_cast(&child);
-    let cid = c.borrow().base.id;
-    if p.borrow_mut().add_child(unsafe { Pin::new_unchecked(c) }) {
-        let _ = engine_remove(cid);
-        return true
-    }
-    false
+    entity_update(&parent, |p| {
+        entity_update(&child, |c| {
+            let cid = c.borrow().base.id;
+            if p.borrow_mut().add_child(unsafe { Pin::new_unchecked(c) }) {
+                let _ = engine_remove(cid);
+                true
+            }
+            else {
+                false
+            }
+        })
+    })
 }
 #[no_mangle]
 pub extern "C"
 fn Entity_remove_child(parent: u64, child: u64) -> bool {
-    let p = entity_cast(&parent);
-    let c = entity_cast(&child);
-    let mut p_ = p.borrow_mut();
-    p_.remove_child(&c)
+    entity_update(&parent, |p| {
+        entity_update(&child, |c| {
+            let mut p_ = p.borrow_mut();
+            p_.remove_child(&c)
+        })
+    })
 }
 #[no_mangle]
 pub extern "C"
 fn Entity_get_parent(addr: u64) -> u64 {
-    let entity = entity_cast(&addr);
-    let e = entity.borrow();
-    match e.get_parent() {
-        Some(p) => {
-            p.borrow().marker_address
-        },
-        None => { 0 }
-    }
+    entity_update(&addr, |entity| {
+        let e = entity.borrow();
+        match e.get_parent() {
+            Some(p) => {
+                p.borrow().marker_address
+            },
+            None => 0
+        }
+    })
 }
 
 #[no_mangle]
 pub extern "C"
 fn Entity_destroy(addr: u64) {
-    let entity = entity_cast(&addr);
-    entity_destroy(&entity);
+    entity_update(&addr, |entity| {
+        entity_destroy(&entity);
+    });
+}
+#[no_mangle]
+pub extern "C"
+fn Entity_create_transform_component(addr: u64) -> u64 {
+    entity_update(&addr, |entity| {
+        let mut e = entity.borrow_mut();
+        let opt = e.components.create_component::<TransformComponent>();
+        unsafe { *(addr_of!(opt) as *const u64) }
+    })
 }
 
 #[macro_export]
@@ -275,22 +298,13 @@ macro_rules! decode_component {
 }
 #[no_mangle]
 pub extern "C"
-fn Entity_create_transform_component(addr: u64) -> u64 {
-    let entity = entity_cast(&addr);
-    let mut e = entity.borrow_mut();
-    let opt = e.components.create_component::<TransformComponent>();
-    unsafe { *(addr_of!(opt) as *const u64) }
-}
-#[no_mangle]
-pub extern "C"
 fn Entity_remove_component(e: u64, c: u64) -> bool {
     let tc = decode_component!(c);
     if tc.is_none() {
         return false
     }
-    let entity = entity_cast(&e);
-    let mut e = entity.borrow_mut();
-    unsafe {
+    entity_update(&e, |entity| {
+        let mut e = entity.borrow_mut();
         match decode_component!(c) {
             Some(comp) => {
                 e.components.remove_component(comp);
@@ -298,17 +312,18 @@ fn Entity_remove_component(e: u64, c: u64) -> bool {
             },
             None => false
         }
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C"
 fn Entity_tick(addr: u64, delta: f32) {
-    let entity = entity_cast(&addr);
-    if entity.borrow().has_parent() {
-        eprintln!("can't tick non-root entity");
-        return
-    }
-    let mut b = entity.borrow_mut();
-    b.tick(delta, &None);
+    entity_update(&addr, |entity| {
+        if entity.borrow().has_parent() {
+            eprintln!("can't tick non-root entity");
+            return
+        }
+        let mut b = entity.borrow_mut();
+        b.tick(delta, &None);
+    })
 }

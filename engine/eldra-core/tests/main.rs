@@ -37,7 +37,7 @@ fn test_transform_component() {
     let tr2 = Entity_create_transform_component(c2);
     Entity_add_child(c1, c2);
 
-    let _info1 = entity_cast(&c1).borrow().reflect_info();
+    let _info1 = entity_cast(&c1).unwrap().borrow().reflect_info();
     let _info2 = unsafe {
             let mut comp = decode_component!(tr2).as_deref_mut().unwrap_unchecked();
             comp.as_any_mut().downcast_mut::<TransformComponent>().unwrap_unchecked().reflect_info() };

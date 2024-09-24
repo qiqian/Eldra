@@ -52,7 +52,7 @@ impl Component for TransformComponent {
     }
 }
 
-fn transform_component_cast<'a>(addr : &Option<*mut dyn Component>) -> &'a mut TransformComponent {
+fn transform_component_cast(addr : &Option<*mut dyn Component>) -> &mut TransformComponent {
     unsafe {
         let a = addr.unwrap_unchecked();
         &mut*(a as *mut TransformComponent)
@@ -61,15 +61,13 @@ fn transform_component_cast<'a>(addr : &Option<*mut dyn Component>) -> &'a mut T
 
 //// exports
 
-
-#[no_mangle]
-pub extern "C"
-fn TransformComponent_translate(me: u64, x : f32, y : f32, z : f32) -> bool {
+fn transform_component_update<F: Fn(&mut TransformComponent)>(me: u64, f: F) -> bool
+{
     match decode_component!(me) {
         Some(c) => {
             match c.as_any_mut().downcast_mut::<TransformComponent>() {
                 Some(tr) => {
-                    tr.translate(&Vector3::new(x, y, z));
+                    f(tr);
                     true
                 },
                 None => false
@@ -77,38 +75,29 @@ fn TransformComponent_translate(me: u64, x : f32, y : f32, z : f32) -> bool {
         },
         None => false
     }
+}
+
+
+#[no_mangle]
+pub extern "C"
+fn TransformComponent_translate(me: u64, x : f32, y : f32, z : f32) -> bool {
+    transform_component_update(me, |tr| {
+        tr.translate(&Vector3::new(x, y, z));
+    })
 }
 
 #[no_mangle]
 pub extern "C"
 fn TransformComponent_rotate(me: u64, x : f32, y : f32, z : f32) -> bool {
-    match decode_component!(me) {
-        Some(c) => {
-            match c.as_any_mut().downcast_mut::<TransformComponent>() {
-                Some(tr) => {
-                    tr.rotate(&Vector3::new(x, y, z));
-                    true
-                },
-                None => false
-            }
-        },
-        None => false
-    }
+    transform_component_update(me, |tr| {
+        tr.rotate(&Vector3::new(x, y, z));
+    })
 }
 
 #[no_mangle]
 pub extern "C"
 fn TransformComponent_scale(me: u64, x : f32, y : f32, z : f32) -> bool{
-    match decode_component!(me) {
-        Some(c) => {
-            match c.as_any_mut().downcast_mut::<TransformComponent>() {
-                Some(tr) => {
-                    tr.scale(&Vector3::new(x, y, z));
-                    true
-                },
-                None => false
-            }
-        },
-        None => false
-    }
+    transform_component_update(me, |tr| {
+        tr.scale(&Vector3::new(x, y, z));
+    })
 }
