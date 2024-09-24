@@ -6,6 +6,7 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::ptr::addr_of_mut;
 use std::rc::Rc;
+use std::sync::Arc;
 use nalgebra::Matrix4;
 use uuid::Uuid;
 
@@ -34,7 +35,12 @@ pub trait Serializable {
 pub trait Uniq {
     fn is_uniq() -> bool;
 }
-
+pub trait Boxed<V> {
+    fn boxed() -> Box<V>;
+}
+pub trait Pinned<V> {
+    fn pinned() -> Pin<Rc<RefCell<V>>>;
+}
 #[macro_export]
 macro_rules! impl_primitive_serialize {
     ( $x:ty ) => {
@@ -139,60 +145,76 @@ impl Serializable for Uuid {
         todo!()
     }
 }
-impl<V> Serializable for Vec<Box<V>> where V : Serializable + ?Sized {
-    fn is_multi_line(&self) -> bool { !self.is_empty() }
+#[macro_export]
+macro_rules! impl_vec_ptr_serialize {
+    ( $x:ident ) => {
+        impl<V> Serializable for Vec<$x<V>> where V : Serializable + ?Sized {
+            fn is_multi_line(&self) -> bool { !self.is_empty() }
 
-    fn serialize_binary(&self, io: &mut dyn Write) {
-        todo!()
-    }
+            fn serialize_binary(&self, io: &mut dyn Write) {
+                todo!()
+            }
 
-    fn deserialize_binary(&mut self, io: &mut dyn Read) {
-        todo!()
-    }
+            fn deserialize_binary(&mut self, io: &mut dyn Read) {
+                todo!()
+            }
 
-    fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
-        if self.is_empty() {
-            io.write("[]".as_bytes());
-        }
-        else {
-            for item in self.iter() {
-                io.write(format!("{}- array_item : \n", indent.clone()).as_bytes());
-                item.serialize_yaml(io, indent.clone() + "  ");
+            fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
+                if self.is_empty() {
+                    io.write("[]".as_bytes());
+                }
+                else {
+                    for item in self.iter() {
+                        io.write(format!("{}- array_item : \n", indent.clone()).as_bytes());
+                        item.serialize_yaml(io, indent.clone() + "  ");
+                    }
+                }
+            }
+
+            fn deserialize_yaml(&mut self, io: &mut dyn Read, indent: String) {
+                todo!()
             }
         }
     }
-
-    fn deserialize_yaml(&mut self, io: &mut dyn Read, indent: String) {
-        todo!()
-    }
 }
-impl<V> Serializable for HashMap<TypeId, Box<V>> where V : Serializable + ?Sized {
-    fn is_multi_line(&self) -> bool { !self.is_empty() }
+impl_vec_ptr_serialize!(Box);
+impl_vec_ptr_serialize!(Rc);
+impl_vec_ptr_serialize!(Arc);
+#[macro_export]
+macro_rules! impl_map_ptr_serialize {
+    ( $x:ident,$y:ident ) => {
+        impl<V> Serializable for HashMap<$x, $y<V>> where V : Serializable + ?Sized {
+            fn is_multi_line(&self) -> bool { !self.is_empty() }
 
-    fn serialize_binary(&self, io: &mut dyn Write) {
-        todo!()
-    }
+            fn serialize_binary(&self, io: &mut dyn Write) {
+                todo!()
+            }
 
-    fn deserialize_binary(&mut self, io: &mut dyn Read) {
-        todo!()
-    }
+            fn deserialize_binary(&mut self, io: &mut dyn Read) {
+                todo!()
+            }
 
-    fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
-        if self.is_empty() {
-            io.write("[]".as_bytes());
-        }
-        else {
-            for item in self.iter() {
-                io.write(format!("{}- map_item : \n", indent.clone()).as_bytes());
-                item.1.serialize_yaml(io, indent.clone() + "  ");
+            fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
+                if self.is_empty() {
+                    io.write("[]".as_bytes());
+                }
+                else {
+                    for item in self.iter() {
+                        io.write(format!("{}- map_item : \n", indent.clone()).as_bytes());
+                        item.1.serialize_yaml(io, indent.clone() + "  ");
+                    }
+                }
+            }
+
+            fn deserialize_yaml(&mut self, io: &mut dyn Read, indent: String) {
+                todo!()
             }
         }
     }
-
-    fn deserialize_yaml(&mut self, io: &mut dyn Read, indent: String) {
-        todo!()
-    }
 }
+impl_map_ptr_serialize!(TypeId, Box);
+impl_map_ptr_serialize!(TypeId, Rc);
+impl_map_ptr_serialize!(TypeId, Arc);
 impl<V> Serializable for HashMap<u64, Pin<Rc<RefCell<V>>>> where V : Serializable + ?Sized {
     fn is_multi_line(&self) -> bool { !self.is_empty() }
 

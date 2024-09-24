@@ -63,13 +63,13 @@ pub struct Components
 }
 impl Components {
     pub fn create_component<T>(&mut self) -> Option<&Box<dyn Component>>
-        where T: Component + Uniq + Default + 'static
+        where T: Component + Uniq + Default + Boxed<T> + 'static
     {
         if T::is_uniq() && self.uniq_comp.contains_key(&TypeId::of::<T>()) {
             eprintln!("can't duplicate uniq component");
             return None
         }
-        let pinned = Box::new(T::default());
+        let pinned = T::boxed();
         if T::is_uniq() {
             self.uniq_comp.insert(TypeId::of::<T>(), pinned);
             self.uniq_comp.get(&TypeId::of::<T>())
@@ -141,10 +141,9 @@ pub struct Entity
     #[serialize]
     components: Components,
 }
-
-impl Entity {
+impl Pinned<Entity> for Entity {
     // caller should decide to whether engine_pin or root_entity.add_child for this new entity
-    pub fn new() -> Pin<Rc<RefCell<Entity>>> {
+    fn pinned() -> Pin<Rc<RefCell<Entity>>> {
         let entity = Rc::new(RefCell::new(Entity::default()));
 
         let addr = addr_of!(*entity) as u64;
@@ -153,7 +152,8 @@ impl Entity {
 
         unsafe { Pin::new_unchecked(entity) }
     }
-
+}
+impl Entity {
     // add_child must take ownership of child, so DO NOT use reference
     pub fn add_child(&mut self, c: Pin<Rc<RefCell<Entity>>>) -> bool {
         let cid = c.borrow().base.id;
@@ -227,7 +227,7 @@ fn entity_destroy(e: &Rc<RefCell<Entity>>) {
 #[no_mangle]
 pub extern "C"
 fn Entity_new() -> u64 {
-    let entity = Entity::new();
+    let entity = Entity::pinned();
     let id = entity.borrow().base.id;
     let addr = entity.borrow().marker_address;
     engine_pin(id, entity);

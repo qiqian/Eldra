@@ -6,9 +6,12 @@ use eldra::entity::{*};
 use eldra::comp::transform_component::{*};
 use eldra::reflection::{*};
 use std::ffi::{CStr, CString};
+use std::fs;
 use std::io::{BufReader, Read};
 use std::ops::{Deref, DerefMut};
 use nalgebra::{*};
+use yaml_rust2::{YamlLoader, YamlEmitter};
+
 
 fn test_entity_create() {
     let parent = Entity_new();
@@ -57,7 +60,18 @@ fn test_transform_component() {
         t2 = t1 * t2;
     }
 
-    Entity_serialize(c1, CString::new("../../bin/test.yaml").unwrap());
+    // serialize
+    {
+        let yaml_path = "../../bin/test.yaml";
+        Entity_serialize(c1, CString::new(yaml_path).unwrap());
+        let yaml_str = fs::read_to_string(yaml_path).unwrap();
+        let docs = YamlLoader::load_from_str(yaml_str.as_ref());
+        let yaml_obj = docs.unwrap();
+        let cnt = yaml_obj.len();
+        for d in yaml_obj.iter() {
+
+        }
+    }
 
     Entity_destroy(c1);
 }

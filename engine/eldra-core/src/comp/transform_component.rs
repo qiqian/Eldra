@@ -37,6 +37,11 @@ impl Default for TransformComponent {
         t
     }
 }
+impl Boxed<TransformComponent> for TransformComponent {
+    fn boxed() -> Box<TransformComponent> {
+        Box::new(TransformComponent::default())
+    }
+}
 impl TransformComponent {
     pub fn translate(&mut self, v: &Vector3<f32>) {
         let _ = self.local_matrix.append_translation(v);
