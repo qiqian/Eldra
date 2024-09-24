@@ -6,23 +6,31 @@ use std::ptr::{addr_of};
 use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
 use std::any::type_name;
+use std::ffi::CString;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::ops::{Deref, DerefMut};
 use eldra_macro::{DropNotify, Reflection};
 use crate::engine::{*};
 use crate::reflection::{*};
 use crate::comp::transform_component::TransformComponent;
 
-#[derive(Debug)]
+#[derive(Debug,Reflection)]
 pub struct BaseObject
 {
     pub id: u64,
+    #[display="Name"]
+    #[serialize]
+    pub name : String,
     pub parent: Weak<RefCell<Entity>>,
     _marker_: PhantomPinned,
 }
 impl Default for BaseObject {
     fn default() -> Self {
+        let myid = engine_next_global_id();
         BaseObject {
-            id: engine_next_global_id(),
+            id: myid,
+            name: myid.to_string(),
             parent: Weak::new(),
             _marker_: PhantomPinned,
         }
@@ -32,7 +40,7 @@ impl Default for BaseObject {
 pub trait ComponentAttr {
     fn is_comp_uniq(&self) -> bool;
 }
-pub trait Component : Reflectable + ComponentAttr {
+pub trait Component : Reflectable + ComponentAttr + Serializable {
     fn tick(&mut self, delta: f32, ancestor: &Option<&Components>);
 }
 pub trait Uniq {
@@ -110,6 +118,7 @@ impl Components {
 #[derive(Default,Reflection,DropNotify)]
 pub struct Entity
 {
+    #[serialize]
     pub base: BaseObject,
     myself: Weak<RefCell<Entity>>,
     // Entity is shared in engine, we use Rc<RefCell>
@@ -326,4 +335,14 @@ fn Entity_tick(addr: u64, delta: f32) {
         let mut b = entity.borrow_mut();
         b.tick(delta, &None);
     })
+}
+
+#[no_mangle]
+pub extern "C"
+fn Entity_serialize(addr: u64, path: CString) {
+    entity_update(&addr, |entity| {
+        let p = path.to_str().unwrap().to_string();
+        let mut file = File::create(p).unwrap();;
+        entity.borrow().serialize_yaml(&mut file, String::new());
+    });
 }

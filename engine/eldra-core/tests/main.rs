@@ -1,11 +1,13 @@
-use std::ptr::addr_of;
+use std::ptr::{addr_of, addr_of_mut};
 use eldra;
 use eldra::{*};
 use eldra::engine::{*};
 use eldra::entity::{*};
 use eldra::comp::transform_component::{*};
 use eldra::reflection::{*};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
+use std::io::{BufReader, Read};
+use std::ops::{Deref, DerefMut};
 use nalgebra::{*};
 
 fn test_entity_create() {
@@ -55,6 +57,8 @@ fn test_transform_component() {
         t2 = t1 * t2;
     }
 
+    Entity_serialize(c1, CString::new("../../test.yaml").unwrap());
+
     Entity_destroy(c1);
 }
 
@@ -71,8 +75,35 @@ fn entity_drop_callback(clz: *const i8, id: u64) {
     let result = cstr_to_str(clz);
     println!("{result} {id} dropped")
 }
+
+trait XX {
+    fn test(&mut self);
+    fn test2(&mut self);
+}
+impl XX for u32 {
+    fn test(&mut self) {
+        unsafe { *addr_of_mut!(*self) += 1; };
+    }
+    fn test2(&mut self) {
+        let mut bytes = self.to_le_bytes();
+        let mut me = bytes.as_mut();
+
+        let mut b = (8815466 as u32).to_le_bytes();
+        let mut b0 = b.as_ref();
+        b0.read(me);
+
+        unsafe { *addr_of_mut!(*self) = <u32>::from_le_bytes(bytes); };
+    }
+}
+
 #[test]
 fn main() {
+    let mut v = 5 as u32;
+    v.test();
+    println!("{}", v);
+    v.test2();
+    println!("{}", v);
+
     engine_init(entity_drop_callback);
     test_entity_create();
     test_transform_component();

@@ -1,13 +1,71 @@
 extern crate core;
 use proc_macro::{TokenStream};
+use std::any::Any;
 use quote::{*};
 use syn::{*};
 
-#[derive(Default,Clone)]
-struct VarInfo {
+#[derive(Clone)]
+struct VarInfo<'a> {
     display : Option<Expr>,
     serialize : bool,
     readonly : bool,
+    field : &'a Field,
+}
+
+fn gen_reflect_info<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
+    let mut reflected = quote! {
+        let mut v = std::vec::Vec::new();
+    };
+    for var in vars {
+        let field_name = var.field.ident.clone().into_token_stream();
+        let field_type = var.field.ty.clone().into_token_stream();
+        let serialize = var.serialize;
+        let readonly = var.readonly;
+        let display_name = match var.display.clone() {
+            Some(t) => {
+                quote! { Some(#t) }
+            },
+            None => quote! { None },
+        };
+        reflected.extend(quote! {
+                            v.push(crate::reflection::ReflectVarInfo {
+                                display : #display_name,
+                                serialize : #serialize,
+                                readonly : #readonly,
+                                offset : std::mem::offset_of!(#struct_name, #field_name) as u32,
+                                size : std::mem::size_of::<#field_type>() as u32,
+                            });
+                    });
+    }
+    reflected.extend(quote! { v });
+    reflected
+}
+
+
+fn gen_yaml_serilizer<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
+    let mut reflected = quote! {};
+    for var in vars {
+        let field_tag = var.field.ident.clone().into_token_stream();
+        let field_name = format!("{{}}field_name : {}\n", field_tag.to_string());
+        let field_type = format!("{{}}field_type : {}\n", var.field.ty.clone().to_token_stream().to_string());
+        let readonly = format!("{{}}readonly : {}\n", var.readonly.to_string());
+        reflected.extend(quote! {
+            io.write(format!(#field_name, indent).as_bytes());
+            io.write(format!(#field_type, indent).as_bytes());
+            io.write(format!(#readonly, indent).as_bytes());
+        });
+        if var.display.is_some() {
+            let d = format!("{{}}display_name : {}\n", var.display.clone().unwrap().to_token_stream().to_string());
+            reflected.extend(quote! {
+                io.write(format!(#d, indent).as_bytes());
+            });
+        }
+        reflected.extend(quote! {
+            io.write(format!("{}value :\n", indent).as_bytes());
+            self.#field_tag.serialize_yaml(io, indent.clone() + "  ");
+        });
+    }
+    reflected
 }
 
 #[proc_macro_derive(Reflection, attributes(display, serialize, readonly))]
@@ -27,14 +85,9 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
     };
 
     // gather ReflectVarInfo
-    let mut reflected = quote! {
-        let mut v = std::vec::Vec::new();
-    };
+    let mut vars = vec!();
     for f in fields.iter() {
-        let field_name = f.ident.clone().into_token_stream();
-        let field_type = f.ty.clone().into_token_stream();
-        println!("FIELD {field_name} {field_type}");
-        let mut var = VarInfo::default();
+        let mut var = VarInfo { display: None, serialize: false, readonly: false, field:f };
         for attr in f.attrs.iter() {
             if attr.path().is_ident("display") {
                 let display_name = attr.meta.require_name_value().unwrap().value.clone();
@@ -49,29 +102,15 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
         }
         let serialize = var.serialize;
         if serialize {
-            let readonly = var.readonly;
-            let display_name = match var.display {
-                Some(t) => {
-                    quote! { Some(#t) }
-                },
-                None => quote! { None },
-            };
-            reflected.extend(quote! {
-                            v.push(crate::reflection::ReflectVarInfo {
-                                display : #display_name,
-                                serialize : #serialize,
-                                readonly : #readonly,
-                                offset : std::mem::offset_of!(#name, #field_name) as u32,
-                                size : std::mem::size_of::<#field_type>() as u32,
-                            });
-                    });
+            vars.push(var);
         }
     }
-    reflected.extend(quote! { v });
+
+    let reflected = gen_reflect_info(name, &vars);
+    let yaml_serializer = gen_yaml_serilizer(name, &vars);
 
     // generate Reflectable trait
     let gen_token = TokenStream::from(quote! {
-
         impl crate::reflection::Reflectable for #name {
             fn as_any(&self) -> &dyn Any { self }
             fn as_any_mut(&mut self) -> &mut dyn Any { self }
@@ -81,11 +120,26 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
                 #reflected
             }
         }
+
+        impl crate::reflection::Serializable for #name {
+            fn serialize_binary(&self, io: &mut dyn std::io::Write) {
+
+            }
+            fn deserialize_binary(&mut self, io: &mut dyn std::io::Read) {
+
+            }
+            fn serialize_yaml(&self, io: &mut dyn std::io::Write, indent: String) {
+                #yaml_serializer
+            }
+            fn deserialize_yaml(&mut self, io: &mut dyn std::io::Read, indent: String) {
+
+            }
+        }
     });
 
     // done
     let _gen_str = gen_token.clone().to_string();
-    //println!("REFLECTION : {_gen_str}");
+    println!("REFLECTION : {_gen_str}");
     gen_token
 }
 

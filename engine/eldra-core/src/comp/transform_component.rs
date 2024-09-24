@@ -1,6 +1,7 @@
 use std::ptr::addr_of;
 use std::any::{Any, TypeId};
 use std::any::type_name;
+use std::io::Write;
 use nalgebra::{*};
 use eldra_macro::{*};
 use crate::decode_component;
@@ -8,7 +9,7 @@ use crate::entity::{*};
 use crate::engine::{*};
 use crate::reflection::{*};
 
-#[derive(Default,Reflection,DropNotify,ComponentAttr)]
+#[derive(Reflection,DropNotify,ComponentAttr)]
 pub struct TransformComponent
 {
     pub base: BaseObject,
@@ -23,6 +24,18 @@ pub struct TransformComponent
     pub world_matrix: Matrix4<f32>,
 }
 
+impl Default for TransformComponent {
+    fn default() -> TransformComponent {
+        let mut t = TransformComponent {
+            base:BaseObject::default(),
+            local_matrix: Default::default(),
+            world_matrix: Default::default(),
+        };
+        t.local_matrix.fill_with_identity();
+        t.world_matrix.fill_with_identity();
+        t
+    }
+}
 impl TransformComponent {
     pub fn translate(&mut self, v: &Vector3<f32>) {
         let _ = self.local_matrix.append_translation(v);
