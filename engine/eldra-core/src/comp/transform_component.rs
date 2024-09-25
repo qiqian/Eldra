@@ -2,6 +2,8 @@ use std::ptr::addr_of;
 use std::any::{Any, TypeId};
 use std::any::type_name;
 use std::io::Write;
+use std::str::FromStr;
+use uuid::Uuid;
 use nalgebra::{*};
 use eldra_macro::{*};
 use crate::decode_component;
@@ -10,6 +12,7 @@ use crate::engine::{*};
 use crate::reflection::{*};
 
 #[derive(Reflection,DropNotify,ComponentAttr)]
+#[uuid="bd122d2f-cc3e-4d99-8bf2-ba1b23015e46"]
 pub struct TransformComponent
 {
     #[serialize]

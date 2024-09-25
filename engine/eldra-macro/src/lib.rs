@@ -3,6 +3,7 @@ use proc_macro::{TokenStream};
 use std::any::Any;
 use quote::{*};
 use syn::{*};
+use uuid::Uuid;
 
 #[derive(Clone)]
 struct VarInfo<'a> {
@@ -77,10 +78,35 @@ fn gen_yaml_serilizer<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_
     reflected
 }
 
-#[proc_macro_derive(Reflection, attributes(display, serialize, readonly))]
+#[proc_macro_derive(Reflection, attributes(uuid, display, serialize, readonly))]
 pub fn gen_reflection(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     let name = &ast.ident;
+
+    // find uuid
+    let mut uuid = None;
+    for attr in ast.attrs.iter() {
+        if attr.path().is_ident("uuid") {
+            let uuid_str = attr.meta.require_name_value().unwrap().value.clone().to_token_stream();
+            // println!("UUID {}", uuid_str);
+            uuid = Some(uuid_str);
+        }
+    }
+    let mut my_token = match uuid {
+        Some(t) => quote!(
+                impl #name {
+                    pub fn type_uuid() -> Option<uuid::Uuid> {
+                        match uuid::Uuid::from_str(#t) {
+                            Ok(u) => Some(u),
+                            Err(e) => None,
+                        }
+                    }
+                }
+            ),
+        None => quote!(
+            impl #name { pub fn type_uuid() -> Option<uuid::Uuid> { None } }
+        ),
+    };
 
     let fields = if
         let syn::Data::Struct(syn::DataStruct {
@@ -119,19 +145,22 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
     let yaml_serializer = gen_yaml_serilizer(name, &vars);
 
     // generate Reflectable trait
-    let gen_token = TokenStream::from(quote! {
+    my_token.extend(quote! {
+        // container constructor
+        impl #name {
+            pub fn dyn_box() -> Box<dyn Any> { Box::new(#name::default()) }
+            pub fn dyn_rc() -> std::rc::Rc<dyn Any> { std::rc::Rc::new(#name::default()) }
+            pub fn dyn_arc() -> std::sync::Arc<dyn Any> { std::sync::Arc::new(#name::default()) }
+        }
         impl crate::reflection::Reflectable for #name {
             fn as_any(&self) -> &dyn Any { self }
             fn as_any_mut(&mut self) -> &mut dyn Any { self }
             fn real_type_id(&self) -> TypeId { TypeId::of::<Self>() }
-
-            fn reflect_info(&self) -> std::vec::Vec<crate::reflection::ReflectVarInfo> {
-                #reflected
-            }
+            fn reflect_info(&self) -> std::vec::Vec<crate::reflection::ReflectVarInfo> { #reflected }
         }
-
         impl crate::reflection::Serializable for #name {
             fn is_multi_line(&self) -> bool { true }
+            fn get_type_uuid(&self) -> Option<uuid::Uuid> { #name::type_uuid() }
             fn serialize_binary(&self, io: &mut dyn std::io::Write) {
 
             }
@@ -146,10 +175,11 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
             }
         }
     });
+    let gen_token = TokenStream::from(my_token);
 
     // done
     let _gen_str = gen_token.clone().to_string();
-    println!("REFLECTION : {_gen_str}");
+    // println!("REFLECTION : {_gen_str}");
     gen_token
 }
 

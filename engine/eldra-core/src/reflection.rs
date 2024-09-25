@@ -14,6 +14,7 @@ use uuid::Uuid;
 use yaml_rust2::Yaml::Hash;
 use crate::comp::transform_component::TransformComponent;
 use crate::engine::ENGINE_ROOT;
+use crate::entity::Entity;
 
 #[derive(Debug,Default)]
 pub struct ReflectVarInfo
@@ -32,6 +33,7 @@ pub trait Reflectable {
 }
 pub trait Serializable {
     fn is_multi_line(&self) -> bool;
+    fn get_type_uuid(&self) -> Option<uuid::Uuid>;
     fn serialize_binary(&self, io: &mut dyn Write);
     fn deserialize_binary(&mut self, io: &mut dyn Read);
     fn serialize_yaml(&self, io: &mut dyn Write, indent: String);
@@ -45,7 +47,7 @@ macro_rules! impl_primitive_serialize {
     ( $x:ty ) => {
         impl Serializable for $x {
             fn is_multi_line(&self) -> bool { false }
-
+            fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
                 io.write(self.to_le_bytes().as_ref());
             }
@@ -82,7 +84,7 @@ impl_primitive_serialize!(u128);
 
 impl Serializable for Matrix4<f32> {
     fn is_multi_line(&self) -> bool { false }
-
+    fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
     fn serialize_binary(&self, io: &mut dyn Write) {
         todo!()
     }
@@ -108,7 +110,7 @@ impl Serializable for Matrix4<f32> {
 }
 impl Serializable for String {
     fn is_multi_line(&self) -> bool { false }
-
+    fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
     fn serialize_binary(&self, io: &mut dyn Write) {
         todo!()
     }
@@ -127,7 +129,7 @@ impl Serializable for String {
 }
 impl Serializable for Uuid {
     fn is_multi_line(&self) -> bool { false }
-
+    fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
     fn serialize_binary(&self, io: &mut dyn Write) {
         todo!()
     }
@@ -152,9 +154,21 @@ struct DynStruct
 }
 type DynNewReg = HashMap<Uuid, DynStruct>;
 static mut DYN_NEW_REG : OnceCell<DynNewReg> = OnceCell::new();
+#[macro_export]
+macro_rules! register_serializable_type {
+    ( $x:ident,$y:ident ) => {
+        $x.insert($y::type_uuid().unwrap(), DynStruct{
+            Box: $y::dyn_box,
+            Rc: $y::dyn_rc,
+            Arc: $y::dyn_arc,
+        });
+    }
+}
 pub unsafe fn init_reflection() {
     DYN_NEW_REG.get_or_init (|| { DynNewReg::new() });
     let reg = DYN_NEW_REG.get_mut().unwrap_unchecked();
+    register_serializable_type!(reg, Entity);
+    register_serializable_type!(reg, TransformComponent);
 }
 fn get_dyn_construct(uuid: Uuid) -> &'static DynStruct
 {
@@ -169,7 +183,7 @@ macro_rules! impl_vec_ptr_serialize {
     ( $x:ident ) => {
         impl<V> Serializable for Vec<$x<V>> where V : Serializable + ?Sized {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
-
+            fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
                 todo!()
             }
@@ -192,7 +206,7 @@ macro_rules! impl_vec_ptr_serialize {
 
             fn deserialize_yaml(&mut self, io: &mut dyn Read, indent: String) {
                 let any = (get_dyn_construct(Uuid::new_v4()). $x) ();
-                self.push(any);
+
             }
         }
     }
@@ -205,7 +219,7 @@ macro_rules! impl_map_ptr_serialize {
     ( $x:ident,$y:ident ) => {
         impl<V> Serializable for HashMap<$x, $y<V>> where V : Serializable + ?Sized {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
-
+            fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
                 todo!()
             }
@@ -237,7 +251,7 @@ impl_map_ptr_serialize!(TypeId, Rc);
 impl_map_ptr_serialize!(TypeId, Arc);
 impl<V> Serializable for HashMap<u64, Pin<Rc<RefCell<V>>>> where V : Serializable + ?Sized {
     fn is_multi_line(&self) -> bool { !self.is_empty() }
-
+    fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
     fn serialize_binary(&self, io: &mut dyn Write) {
         todo!()
     }

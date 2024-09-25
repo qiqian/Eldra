@@ -10,6 +10,7 @@ use std::ffi::CString;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 use uuid::Uuid;
 use eldra_macro::{DropNotify, Reflection};
 use crate::engine::{*};
@@ -123,6 +124,7 @@ impl Components {
 }
 
 #[derive(Default,Reflection,DropNotify)]
+#[uuid="1d9f39bc-ed1b-4868-8475-67b8d3caf88c"]
 pub struct Entity
 {
     #[serialize]
