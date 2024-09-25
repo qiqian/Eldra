@@ -2,13 +2,18 @@ use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::mem::transmute_copy;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use std::sync::Arc;
 use nalgebra::Matrix4;
+use once_cell::sync::OnceCell;
 use uuid::Uuid;
+use yaml_rust2::Yaml::Hash;
+use crate::comp::transform_component::TransformComponent;
+use crate::engine::ENGINE_ROOT;
 
 #[derive(Debug,Default)]
 pub struct ReflectVarInfo
@@ -34,12 +39,6 @@ pub trait Serializable {
 }
 pub trait Uniq {
     fn is_uniq() -> bool;
-}
-pub trait Boxed<V> {
-    fn boxed() -> Box<V>;
-}
-pub trait Pinned<V> {
-    fn pinned() -> Pin<Rc<RefCell<V>>>;
 }
 #[macro_export]
 macro_rules! impl_primitive_serialize {
@@ -145,6 +144,26 @@ impl Serializable for Uuid {
         todo!()
     }
 }
+struct DynStruct
+{
+    Box : fn()->Box<dyn Any>,
+    Rc  : fn()->Rc<dyn Any>,
+    Arc : fn()->Arc<dyn Any>,
+}
+type DynNewReg = HashMap<Uuid, DynStruct>;
+static mut DYN_NEW_REG : OnceCell<DynNewReg> = OnceCell::new();
+pub unsafe fn init_reflection() {
+    DYN_NEW_REG.get_or_init (|| { DynNewReg::new() });
+    let reg = DYN_NEW_REG.get_mut().unwrap_unchecked();
+}
+fn get_dyn_construct(uuid: Uuid) -> &'static DynStruct
+{
+    unsafe { &DYN_NEW_REG.get_unchecked().get(&uuid).unwrap() }
+}
+pub type FARPROC = unsafe extern "system" fn() -> isize;
+pub fn cast_to_function<F>(address: FARPROC, _fn: &F) -> F {
+    unsafe { transmute_copy(&address) }
+}
 #[macro_export]
 macro_rules! impl_vec_ptr_serialize {
     ( $x:ident ) => {
@@ -172,7 +191,8 @@ macro_rules! impl_vec_ptr_serialize {
             }
 
             fn deserialize_yaml(&mut self, io: &mut dyn Read, indent: String) {
-                todo!()
+                let any = (get_dyn_construct(Uuid::new_v4()). $x) ();
+                self.push(any);
             }
         }
     }

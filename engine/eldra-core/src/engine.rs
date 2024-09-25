@@ -9,13 +9,12 @@ use std::os::raw::c_char;
 use std::rc::Rc;
 use crate::comp::transform_component::TransformComponent;
 use crate::entity::{Component, Entity};
-use crate::reflection::{Boxed, Pinned, Serializable};
+use crate::reflection::{init_reflection, Reflectable, Serializable};
 
 pub fn engine_init(drop_callback: ObjDropCallback) {
     unsafe {
-        let mut _engine_ = engine_init_once__(drop_callback);
-        let mut _clz_map_ = &_engine_.clz_map;
-        //_clz_map_.insert(0, TransformComponent::boxed);
+        engine_init_once__(drop_callback);
+        init_reflection();
     }
 }
 
@@ -28,18 +27,15 @@ pub struct Engine
     pub object_registry : HashMap<u64, Pin<Rc<dyn Any>>>,
 
     pub on_obj_drop_callback: ObjDropCallback,
-
-    pub clz_map : HashMap<u64, fn()>,
 }
 pub static mut ENGINE_ROOT: OnceCell<Engine> = OnceCell::new();
 fn engine_init_once__(drop_callback: ObjDropCallback) -> &'static Engine {
     unsafe {
-        ENGINE_ROOT.get_or_init(|| {
+        ENGINE_ROOT.get_or_init (|| {
             Engine {
                 uid_generator: AtomicU64::new(100),
                 object_registry: HashMap::new(),
                 on_obj_drop_callback: drop_callback,
-                clz_map: HashMap::new(),
             }})
     }
 }

@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::ptr::{addr_of, addr_of_mut};
 use eldra;
 use eldra::{*};
@@ -9,6 +10,8 @@ use std::ffi::{CStr, CString};
 use std::fs;
 use std::io::{BufReader, Read};
 use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
+use std::sync::Arc;
 use nalgebra::{*};
 use yaml_rust2::{YamlLoader, YamlEmitter};
 
@@ -112,13 +115,22 @@ impl XX for u32 {
 
 #[test]
 fn main() {
+    engine_init(entity_drop_callback);
+
+    let b:Box<dyn Any> = Box::new(TransformComponent::default());
+    let r:Rc<dyn Any> = Rc::from(b);
+    let rr = r.downcast::<TransformComponent>().unwrap();
+
+    let c:Box<dyn Any> = Box::new(TransformComponent::default());
+    let a:Arc<dyn Any> = Arc::from(c);
+    let aa = a.downcast_ref::<TransformComponent>().unwrap();
+
     let mut v = 5 as u32;
     v.test();
     println!("{}", v);
     v.test2();
     println!("{}", v);
 
-    engine_init(entity_drop_callback);
     test_entity_create();
     test_transform_component();
 }

@@ -63,19 +63,19 @@ pub struct Components
 }
 impl Components {
     pub fn create_component<T>(&mut self) -> Option<&Box<dyn Component>>
-        where T: Component + Uniq + Default + Boxed<T> + 'static
+        where T: Component + Uniq + Default + 'static
     {
         if T::is_uniq() && self.uniq_comp.contains_key(&TypeId::of::<T>()) {
             eprintln!("can't duplicate uniq component");
             return None
         }
-        let pinned = T::boxed();
+        let boxed = Box::new(T::default());
         if T::is_uniq() {
-            self.uniq_comp.insert(TypeId::of::<T>(), pinned);
+            self.uniq_comp.insert(TypeId::of::<T>(), boxed);
             self.uniq_comp.get(&TypeId::of::<T>())
         }
         else {
-            self.multi_comp.push(pinned);
+            self.multi_comp.push(boxed);
             Some(&self.multi_comp[self.multi_comp.len() - 1])
         }
     }
@@ -141,7 +141,7 @@ pub struct Entity
     #[serialize]
     components: Components,
 }
-impl Pinned<Entity> for Entity {
+impl Entity {
     // caller should decide to whether engine_pin or root_entity.add_child for this new entity
     fn pinned() -> Pin<Rc<RefCell<Entity>>> {
         let entity = Rc::new(RefCell::new(Entity::default()));
@@ -152,8 +152,6 @@ impl Pinned<Entity> for Entity {
 
         unsafe { Pin::new_unchecked(entity) }
     }
-}
-impl Entity {
     // add_child must take ownership of child, so DO NOT use reference
     pub fn add_child(&mut self, c: Pin<Rc<RefCell<Entity>>>) -> bool {
         let cid = c.borrow().base.id;
