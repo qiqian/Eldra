@@ -21,13 +21,13 @@ use crate::comp::transform_component::TransformComponent;
 pub struct BaseObject
 {
     #[serialize]
-    pub id: u64,
+    pub id: i64,
     #[display="Name"]
     #[serialize]
     pub name : String,
     #[display="UUID"]
     #[serialize]
-    pub uid : Uuid,
+    pub instance_id : Uuid,
 
     pub parent: Weak<RefCell<Entity>>,
 
@@ -39,7 +39,7 @@ impl Default for BaseObject {
         BaseObject {
             id: myid,
             name: myid.to_string(),
-            uid: Uuid::new_v4(),
+            instance_id: Uuid::new_v4(),
             parent: Weak::new(),
             _marker_: PhantomPinned,
         }
@@ -138,14 +138,14 @@ pub struct Entity
     // but Rc is readonly, that leads to Rc<RefCell<_>>
     #[display="Children"]
     #[serialize]
-    children: HashMap<u64, Pin<Rc<RefCell<Entity>>>>,
+    children: HashMap<i64, Pin<Rc<RefCell<Entity>>>>,
     #[display="Components"]
     #[serialize]
     components: Components,
 }
 impl Entity {
     // caller should decide to whether engine_pin or root_entity.add_child for this new entity
-    fn pinned() -> Pin<Rc<RefCell<Entity>>> {
+    pub fn pinned() -> Pin<Rc<RefCell<Entity>>> {
         let entity = Rc::new(RefCell::new(Entity::default()));
 
         let addr = addr_of!(*entity) as u64;

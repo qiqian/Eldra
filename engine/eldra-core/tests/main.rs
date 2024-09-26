@@ -68,12 +68,8 @@ fn test_transform_component() {
         let yaml_path = "../../bin/test.yaml";
         Entity_serialize(c1, CString::new(yaml_path).unwrap());
         let yaml_str = fs::read_to_string(yaml_path).unwrap();
-        let docs = YamlLoader::load_from_str(yaml_str.as_ref());
-        let yaml_obj = docs.unwrap();
-        let cnt = yaml_obj.len();
-        for d in yaml_obj.iter() {
-
-        }
+        let e = Entity::pinned();
+        load_from_yaml(e.borrow_mut().deref_mut(), &yaml_str);
     }
 
     Entity_destroy(c1);
@@ -88,7 +84,7 @@ pub fn cstr_to_str(c_buf: *const i8) -> &'static str {
 }
 #[no_mangle]
 extern "C"
-fn entity_drop_callback(clz: *const i8, id: u64) {
+fn entity_drop_callback(clz: *const i8, id: i64) {
     let result = cstr_to_str(clz);
     println!("{result} {id} dropped")
 }
@@ -112,19 +108,10 @@ impl XX for u32 {
         unsafe { *addr_of_mut!(*self) = <u32>::from_le_bytes(bytes); };
     }
 }
-
 #[test]
 fn main() {
     engine_init(entity_drop_callback);
-
-    let b:Box<dyn Any> = Box::new(TransformComponent::default());
-    let r:Rc<dyn Any> = Rc::from(b);
-    let rr = r.downcast::<TransformComponent>().unwrap();
-
-    let c:Box<dyn Any> = Box::new(TransformComponent::default());
-    let a:Arc<dyn Any> = Arc::from(c);
-    let aa = a.downcast_ref::<TransformComponent>().unwrap();
-
+    
     let mut v = 5 as u32;
     v.test();
     println!("{}", v);

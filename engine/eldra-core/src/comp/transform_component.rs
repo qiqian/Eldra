@@ -30,14 +30,11 @@ pub struct TransformComponent
 
 impl Default for TransformComponent {
     fn default() -> TransformComponent {
-        let mut t = TransformComponent {
+        TransformComponent {
             base:BaseObject::default(),
-            local_matrix: Default::default(),
-            world_matrix: Default::default(),
-        };
-        t.local_matrix.fill_with_identity();
-        t.world_matrix.fill_with_identity();
-        t
+            local_matrix: Matrix4::identity(),
+            world_matrix: Matrix4::identity(),
+        }
     }
 }
 impl TransformComponent {

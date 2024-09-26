@@ -3,6 +3,7 @@ use proc_macro::{TokenStream};
 use std::any::Any;
 use quote::{*};
 use syn::{*};
+use syn::spanned::Spanned;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -23,9 +24,7 @@ fn gen_reflect_info<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_ma
         let serialize = var.serialize;
         let readonly = var.readonly;
         let display_name = match var.display.clone() {
-            Some(t) => {
-                quote! { Some(#t) }
-            },
+            Some(t) => { quote! { Some(#t) } },
             None => quote! { None },
         };
         reflected.extend(quote! {
@@ -43,8 +42,14 @@ fn gen_reflect_info<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_ma
 }
 
 
-fn gen_yaml_serilizer<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
+fn gen_yaml_serilizer<'a>(struct_name: &Ident, uuid: &Option<proc_macro2::TokenStream>, vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
     let mut reflected = quote! {};
+    if uuid.is_some() {
+        let uuid_str = format!("{{}}type_uuid : {}\n", uuid.clone().unwrap().to_string());
+        reflected.extend(quote! {
+                io.write(format!(#uuid_str, indent.clone()).as_bytes());
+            });
+    }
     for var in vars {
         let field_tag = var.field.ident.clone().into_token_stream();
         let field_mark = format!("{{}}{} : \n", field_tag.to_string());
@@ -78,6 +83,26 @@ fn gen_yaml_serilizer<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_
     reflected
 }
 
+fn gen_yaml_deserilizer<'a>(vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
+    let mut reflected = quote! {};
+    for var in vars {
+        let field_ident = var.field.ident.clone().into_token_stream();
+        let field_name = field_ident.to_string();
+        reflected.extend(quote! {
+            {
+                let field_data = &yaml[#field_name];
+                if !field_data.is_null() && !field_data.is_badvalue() {
+                    let field_value = &field_data["value"];
+                    if !field_value.is_null() && !field_value.is_badvalue() {
+                        self.#field_ident.deserialize_yaml(field_value);
+                    }
+                }
+            }
+        });
+    }
+    reflected
+}
+
 #[proc_macro_derive(Reflection, attributes(uuid, display, serialize, readonly))]
 pub fn gen_reflection(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -92,7 +117,7 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
             uuid = Some(uuid_str);
         }
     }
-    let mut my_token = match uuid {
+    let mut my_token = match uuid.clone() {
         Some(t) => quote!(
                 impl #name {
                     pub fn type_uuid() -> Option<uuid::Uuid> {
@@ -142,16 +167,11 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
     }
 
     let reflected = gen_reflect_info(name, &vars);
-    let yaml_serializer = gen_yaml_serilizer(name, &vars);
+    let yaml_serializer = gen_yaml_serilizer(name, &uuid, &vars);
+    let yaml_deerializer = gen_yaml_deserilizer(&vars);
 
     // generate Reflectable trait
     my_token.extend(quote! {
-        // container constructor
-        impl #name {
-            pub fn dyn_box() -> Box<dyn Any> { Box::new(#name::default()) }
-            pub fn dyn_rc() -> std::rc::Rc<dyn Any> { std::rc::Rc::new(#name::default()) }
-            pub fn dyn_arc() -> std::sync::Arc<dyn Any> { std::sync::Arc::new(#name::default()) }
-        }
         impl crate::reflection::Reflectable for #name {
             fn as_any(&self) -> &dyn Any { self }
             fn as_any_mut(&mut self) -> &mut dyn Any { self }
@@ -170,14 +190,14 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
             fn serialize_yaml(&self, io: &mut dyn std::io::Write, indent: String) {
                 #yaml_serializer
             }
-            fn deserialize_yaml(&mut self, io: &mut dyn std::io::Read, indent: String) {
-
+            fn deserialize_yaml(&mut self, yaml: &yaml_rust2::Yaml) {
+                #yaml_deerializer
             }
         }
     });
-    let gen_token = TokenStream::from(my_token);
 
     // done
+    let gen_token = TokenStream::from(my_token);
     let _gen_str = gen_token.clone().to_string();
     // println!("REFLECTION : {_gen_str}");
     gen_token
