@@ -138,49 +138,58 @@ pub struct Entity
     // but Rc is readonly, that leads to Rc<RefCell<_>>
     #[display="Children"]
     #[serialize]
-    children: HashMap<i64, Pin<Rc<RefCell<Entity>>>>,
+    children: Vec<Rc<RefCell<Entity>>>,
     #[display="Components"]
     #[serialize]
     components: Components,
 }
 impl Entity {
     // caller should decide to whether engine_pin or root_entity.add_child for this new entity
-    pub fn pinned() -> Pin<Rc<RefCell<Entity>>> {
+    pub fn pinned() -> Rc<RefCell<Entity>> {
         let entity = Rc::new(RefCell::new(Entity::default()));
 
         let addr = addr_of!(*entity) as u64;
         entity.borrow_mut().marker_address = addr;
         entity.borrow_mut().myself = Rc::downgrade(&entity.clone());
 
-        unsafe { Pin::new_unchecked(entity) }
+        engine_pin(entity.borrow().base.instance_id, unsafe { Pin::new_unchecked(entity.clone()) });
+        entity
     }
-    // add_child must take ownership of child, so DO NOT use reference
-    pub fn add_child(&mut self, c: Pin<Rc<RefCell<Entity>>>) -> bool {
-        let cid = c.borrow().base.id;
+    pub fn add_child(&mut self, c: Rc<RefCell<Entity>>) -> bool {
+        let iid = c.borrow().base.instance_id;
         if !c.borrow().has_parent() {
             // c.parent <- p
             c.borrow_mut().base.parent = self.myself.clone();
             // p.children <- c
-            self.children.insert(cid, c);
+            self.children.push(c);
             true
         } else {
-            println!("entity:{cid} already has parent");
+            println!("entity:{iid} already has parent");
             false
         }
     }
     pub fn remove_child(&mut self, c: &Rc<RefCell<Entity>>) -> bool {
-        let cid = c.borrow().base.id;
-        let pinned = self.children.remove(&cid);
-        match pinned {
-            Some(p) => { // removed
-                c.borrow_mut().base.parent = Weak::new();
-                // keep in global
-                engine_pin(cid, p);
-                true
-            },
-            None => { // not found
-                let myid = self.base.id;
-                println!("entity:{cid} is not my:{myid} child");
+        let instance_id = c.borrow().base.instance_id;
+        if !c.borrow().has_parent() {
+            println!("entity:{instance_id} has no parent");
+            false
+        }
+        else {
+            if (c.borrow().base.parent.as_ptr() as u64) != self.marker_address {
+                let myid = self.base.instance_id;
+                println!("entity:{instance_id} is not my:{myid} child");
+                false
+            }
+            else {
+                for i in 0..self.children.len() {
+                    if self.children[i].borrow().base.instance_id == instance_id {
+                        c.borrow_mut().base.parent = Weak::new();
+                        self.children.remove(i);
+                        return true
+                    }
+                }
+                let myid = self.base.instance_id;
+                println!("entity:{instance_id} not found in my:{myid} child");
                 false
             }
         }
@@ -203,23 +212,17 @@ impl Entity {
             c.tick(delta, parent);
         }
         for c in self.children.iter_mut() {
-            c.1.borrow_mut().tick(delta, &Some(&self.components));
+            c.borrow_mut().tick(delta, &Some(&self.components));
         }
     }
 }
 
 fn entity_destroy(e: &Rc<RefCell<Entity>>) {
-    let myid = e.borrow().base.id;
-    match e.borrow().get_parent() {
-        Some(p) => {
-            // remove from parent
-            p.borrow_mut().children.remove(&myid);
-        },
-        None => {
-            // remove from global
-            engine_remove(myid);
-        },
+    let p = e.borrow().get_parent();
+    if (p.is_some()) {
+        unsafe { p.unwrap_unchecked() }.borrow_mut().remove_child(e);
     }
+    engine_remove(&e.borrow().base.instance_id);
 }
 
 //// exports
@@ -228,9 +231,7 @@ fn entity_destroy(e: &Rc<RefCell<Entity>>) {
 pub extern "C"
 fn Entity_new() -> u64 {
     let entity = Entity::pinned();
-    let id = entity.borrow().base.id;
     let addr = entity.borrow().marker_address;
-    engine_pin(id, entity);
     addr
 }
 
@@ -253,13 +254,7 @@ fn Entity_add_child(parent: u64, child: u64) -> bool {
     entity_update(&parent, |p| {
         entity_update(&child, |c| {
             let cid = c.borrow().base.id;
-            if p.borrow_mut().add_child(unsafe { Pin::new_unchecked(c) }) {
-                let _ = engine_remove(cid);
-                true
-            }
-            else {
-                false
-            }
+            p.borrow_mut().add_child(c)
         })
     })
 }

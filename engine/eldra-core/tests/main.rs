@@ -10,6 +10,7 @@ use std::ffi::{CStr, CString};
 use std::fs;
 use std::io::{BufReader, Read};
 use std::ops::{Deref, DerefMut};
+use std::os::raw::c_char;
 use std::rc::Rc;
 use std::sync::Arc;
 use nalgebra::{*};
@@ -25,6 +26,7 @@ fn test_entity_create() {
     assert_eq!(Entity_add_child(parent2, child), false);
     //assert_eq!(Entity_detach_from_parent(child), true);
     //assert_eq!(Entity_detach_from_parent(child), false);
+    assert_eq!(Entity_get_parent(child), parent);
     assert_eq!(Entity_remove_child(Entity_get_parent(child), child), true);
     assert_eq!(Entity_get_parent(child), 0);
     assert_eq!(Entity_remove_child(parent, child), false);
@@ -35,7 +37,7 @@ fn test_entity_create() {
     Entity_destroy(parent2);
 }
 
-fn test_transform_component() {
+fn test_transform_component() -> u64 {
     let c1 = Entity_new();
     let tr1 = Entity_create_transform_component(c1);
     assert_eq!(Entity_create_transform_component(c1), 0);
@@ -63,20 +65,20 @@ fn test_transform_component() {
         t2 = t1 * t2;
     }
 
-    // serialize
-    {
-        let yaml_path = "../../bin/test.yaml";
-        Entity_serialize(c1, CString::new(yaml_path).unwrap());
-        let yaml_str = fs::read_to_string(yaml_path).unwrap();
-        let e = Entity::pinned();
-        load_from_yaml(e.borrow_mut().deref_mut(), &yaml_str);
-    }
-
-    Entity_destroy(c1);
+    c1
 }
 
-
-pub fn cstr_to_str(c_buf: *const i8) -> &'static str {
+fn test_serialize(entity: u64) {
+    // serialize
+    let yaml_path = "../../bin/test.yaml";
+    Entity_serialize(entity, CString::new(yaml_path).unwrap());
+    // deserialize
+    let yaml_str = fs::read_to_string(yaml_path).unwrap();
+    let e = Entity::pinned();
+    load_from_yaml(e.borrow_mut().deref_mut(), &yaml_str);
+    println!("deserialize done");
+}
+pub fn cstr_to_str(c_buf: *const c_char) -> &'static str {
     unsafe {
         let cstr = CStr::from_ptr(c_buf);
         cstr.to_str().unwrap()
@@ -84,40 +86,29 @@ pub fn cstr_to_str(c_buf: *const i8) -> &'static str {
 }
 #[no_mangle]
 extern "C"
-fn entity_drop_callback(clz: *const i8, id: i64) {
-    let result = cstr_to_str(clz);
-    println!("{result} {id} dropped")
+fn entity_drop_callback(clz: *const c_char, id: *const c_char) {
+    println!("{} {} dropped", cstr_to_str(clz), cstr_to_str(id))
 }
 
-trait XX {
-    fn test(&mut self);
-    fn test2(&mut self);
-}
-impl XX for u32 {
-    fn test(&mut self) {
-        unsafe { *addr_of_mut!(*self) += 1; };
-    }
-    fn test2(&mut self) {
-        let mut bytes = self.to_le_bytes();
-        let mut me = bytes.as_mut();
-
-        let mut b = (8815466 as u32).to_le_bytes();
-        let mut b0 = b.as_ref();
-        b0.read(me);
-
-        unsafe { *addr_of_mut!(*self) = <u32>::from_le_bytes(bytes); };
-    }
-}
 #[test]
 fn main() {
-    engine_init(entity_drop_callback);
-    
-    let mut v = 5 as u32;
-    v.test();
-    println!("{}", v);
-    v.test2();
-    println!("{}", v);
+    let b = Box::new(1);
+    let b2 : Box<i32> = Box::from(b);
+    let r:Rc<i32> = Rc::from(b2);
 
+    let b3 = Box::new(1);
+    let a:Arc<i32> = Arc::from(b3);
+
+    engine_init(entity_drop_callback);
+
+    println!("test entity");
     test_entity_create();
-    test_transform_component();
+
+    println!("test transform");
+    let entity = test_transform_component();
+
+    println!("test serialize");
+    test_serialize(entity);
+
+    Entity_destroy(entity);
 }

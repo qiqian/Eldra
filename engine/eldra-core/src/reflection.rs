@@ -21,19 +21,13 @@ use crate::entity::{Component, Entity};
 
 macro_rules! register_serializable_type {
     ( $x:ident,$y:ident ) => {
-        $x.insert($y::type_uuid().unwrap(), DynComponentStruct{
-            Box: $y::dyn_box,
-            Rc: $y::dyn_rc,
-            Arc: $y::dyn_arc,
-        });
+        $x.insert($y::type_uuid().unwrap(), $y::dyn_box);
     }
 }
 macro_rules! impl_serializable_dyn_type {
     ( $x:ident,$y:ident ) => {
         impl $x {
             pub fn dyn_box() -> Box<dyn $y> { Box::new($x::default()) }
-            pub fn dyn_rc() -> Rc<dyn $y> { Rc::new($x::default()) }
-            pub fn dyn_arc() -> Arc<dyn $y> { Arc::new($x::default()) }
         }
     }
 }
@@ -47,14 +41,9 @@ pub unsafe fn init_reflection() {
     // let yy = x.downcast::<dyn Component>();
 }
 
-struct DynComponentStruct {
-    Box : fn()->Box<dyn Component>,
-    Rc  : fn()->Rc<dyn Component>,
-    Arc : fn()->Arc<dyn Component>,
-}
 #[derive(Default)]
 struct DynNewReg {
-    Component: HashMap<Uuid, DynComponentStruct>,
+    Component: HashMap<Uuid, fn()->Box<dyn Component>>,
 }
 static mut DYN_NEW_REG : OnceCell<DynNewReg> = OnceCell::new();
 #[derive(Debug,Default)]
@@ -241,13 +230,16 @@ macro_rules! impl_vec_ptr_serialize {
             }
 
             fn deserialize_yaml(&mut self, data: &Yaml) {
+                println!("deserialize dyn {:?}", data);
                 let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$y) };
                 let arr = data.as_vec().unwrap();
                 for yaml in arr {
                     let uuid_str = yaml["type_uuid"].as_str().unwrap();
                     let uuid = Uuid::from_str(uuid_str).unwrap();
-                    let item = (constructor.get(&uuid).unwrap().$x)();
-                    self.push(item);
+                    let mut item = (constructor.get(&uuid).unwrap())();
+                    item.deserialize_yaml(yaml);
+                    let item_ : $x<dyn $y> = $x::from(item);
+                    self.push(item_);
                 }
             }
         }
@@ -256,6 +248,44 @@ macro_rules! impl_vec_ptr_serialize {
 impl_vec_ptr_serialize!(Box, Component);
 impl_vec_ptr_serialize!(Rc, Component);
 impl_vec_ptr_serialize!(Arc, Component);
+macro_rules! impl_vec_concrete_serialize {
+    ( $x:ident,$c:ident,$y:ident,$f:ident,$m:ident ) => {
+        impl Serializable for Vec<$x<$c<$y>>> {
+            fn is_multi_line(&self) -> bool { !self.is_empty() }
+            fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
+            fn serialize_binary(&self, io: &mut dyn Write) {
+                todo!()
+            }
+
+            fn deserialize_binary(&mut self, io: &mut dyn Read) {
+                todo!()
+            }
+
+            fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
+                if self.is_empty() {
+                    io.write("[]".as_bytes());
+                }
+                else {
+                    for item in self.iter() {
+                        io.write(format!("{}- array_item : \n", indent.clone()).as_bytes());
+                        item.borrow().serialize_yaml(io, indent.clone() + "  ");
+                    }
+                }
+            }
+
+            fn deserialize_yaml(&mut self, data: &Yaml) {
+                for yaml in data.as_vec().unwrap() {
+                    println!("deserialize concrete {:?}", yaml);
+                    let item = $y::$f();
+                    item.$m().deserialize_yaml(yaml);
+                    self.push(item);
+                }
+            }
+        }
+    }
+}
+impl_vec_concrete_serialize!(Rc, RefCell, Entity, pinned, borrow_mut);
+
 macro_rules! impl_map_ptr_serialize {
     ( $x:ident,$y:ident,$z:ident,$w:ident ) => {
         impl Serializable for HashMap<$x, $y<dyn $z>> where dyn $z : Serializable {
@@ -286,9 +316,11 @@ macro_rules! impl_map_ptr_serialize {
                 yaml.as_vec().unwrap().iter().for_each(|e| {
                     let uuid_str = e["type_uuid"].as_str().unwrap();
                     let uuid = Uuid::from_str(uuid_str).unwrap();
-                    let item = (constructor.get(&uuid).unwrap().$y)();
+                    let mut item = (constructor.get(&uuid).unwrap())();
+                    item.deserialize_yaml(e);
                     let tt = item.$w();
-                    self.insert(tt, item);
+                    let item_ : $y<dyn $z> = $y::from(item);
+                    self.insert(tt, item_);
                 });
             }
         }
@@ -297,47 +329,11 @@ macro_rules! impl_map_ptr_serialize {
 impl_map_ptr_serialize!(TypeId, Box, Component, real_type_id);
 impl_map_ptr_serialize!(TypeId, Rc, Component, real_type_id);
 impl_map_ptr_serialize!(TypeId, Arc, Component, real_type_id);
-impl<V> Serializable for HashMap<i64, Pin<Rc<RefCell<V>>>> where V : Serializable + ?Sized {
-    fn is_multi_line(&self) -> bool { !self.is_empty() }
-    fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
-    fn serialize_binary(&self, io: &mut dyn Write) {
-        todo!()
-    }
-
-    fn deserialize_binary(&mut self, io: &mut dyn Read) {
-        todo!()
-    }
-
-    fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
-        if self.is_empty() {
-            io.write("[]".as_bytes());
-        }
-        else {
-            for item in self.iter() {
-                io.write(format!("{}- map_item : \n", indent.clone()).as_bytes());
-                item.1.borrow().serialize_yaml(io, indent.clone() + "  ");
-            }
-        }
-    }
-
-    fn deserialize_yaml(&mut self, yaml: &Yaml) {
-        todo!()
-    }
-}
-
 // yaml loader
 pub fn load_from_yaml(root: &mut dyn Serializable, data: &String) {
     let docs = YamlLoader::load_from_str(data.as_ref()).unwrap();
-    let yaml = &docs[0];
-    let base = &yaml["base"];
-    let readonly = base["readonly"].as_bool().unwrap();
-
-    let children = yaml["children"]["value"].as_vec().unwrap();
-    //let components = yaml["components"]["value"].as_vec().unwrap();
-
-    //let xx = &base["xx"].as_bool().unwrap();
-
-
+    let doc = &docs[0];
+    root.deserialize_yaml(doc);
 }
 
 // binary loader

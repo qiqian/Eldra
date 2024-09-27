@@ -196,7 +196,7 @@ pub fn gen_drop_notify(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         impl Drop for #name {
             fn drop(&mut self) {
-                engine_notify_drop_object(type_name::<#name>(), self.base.id);
+                engine_notify_drop_object(type_name::<#name>(), &self.base.instance_id);
             }
         }
     })
