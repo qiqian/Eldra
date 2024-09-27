@@ -19,10 +19,47 @@ use crate::comp::transform_component::TransformComponent;
 use crate::engine::ENGINE_ROOT;
 use crate::entity::{Component, Entity};
 
+macro_rules! register_serializable_type {
+    ( $x:ident,$y:ident ) => {
+        $x.insert($y::type_uuid().unwrap(), DynComponentStruct{
+            Box: $y::dyn_box,
+            Rc: $y::dyn_rc,
+            Arc: $y::dyn_arc,
+        });
+    }
+}
+macro_rules! impl_serializable_dyn_type {
+    ( $x:ident,$y:ident ) => {
+        impl $x {
+            pub fn dyn_box() -> Box<dyn $y> { Box::new($x::default()) }
+            pub fn dyn_rc() -> Rc<dyn $y> { Rc::new($x::default()) }
+            pub fn dyn_arc() -> Arc<dyn $y> { Arc::new($x::default()) }
+        }
+    }
+}
+
+impl_serializable_dyn_type!(TransformComponent, Component);
+pub unsafe fn init_reflection() {
+    DYN_NEW_REG.get_or_init (|| { DynNewReg::default() });
+
+    let reg = &mut DYN_NEW_REG.get_mut().unwrap_unchecked().Component;
+    register_serializable_type!(reg, TransformComponent);
+    // let yy = x.downcast::<dyn Component>();
+}
+
+struct DynComponentStruct {
+    Box : fn()->Box<dyn Component>,
+    Rc  : fn()->Rc<dyn Component>,
+    Arc : fn()->Arc<dyn Component>,
+}
+#[derive(Default)]
+struct DynNewReg {
+    Component: HashMap<Uuid, DynComponentStruct>,
+}
+static mut DYN_NEW_REG : OnceCell<DynNewReg> = OnceCell::new();
 #[derive(Debug,Default)]
 pub struct ReflectVarInfo
 {
-    pub display : Option<&'static str>,
     pub serialize : bool,
     pub readonly : bool,
     pub offset : u32,
@@ -135,9 +172,9 @@ impl<T, R, C, S> Serializable for Matrix<T, R, C, S> where T: Serializable + Def
 
     fn deserialize_yaml(&mut self, yaml: &Yaml) {
         let mut it = self.iter_mut();
-        for v in yaml.as_vec().unwrap() {
+        yaml.as_vec().unwrap().iter().for_each(|v| {
             it.next().unwrap().deserialize_yaml(v);
-        }
+        })
     }
 }
 impl Serializable for String {
@@ -178,49 +215,6 @@ impl Serializable for Uuid {
         *self = Uuid::from_str(yaml.as_str().unwrap()).unwrap();
     }
 }
-struct DynComponentStruct {
-    Box : fn()->Box<dyn Component>,
-    Rc  : fn()->Rc<dyn Component>,
-    Arc : fn()->Arc<dyn Component>,
-}
-#[derive(Default)]
-struct DynNewReg {
-    Component: HashMap<Uuid, DynComponentStruct>,
-}
-static mut DYN_NEW_REG : OnceCell<DynNewReg> = OnceCell::new();
-#[macro_export]
-macro_rules! register_serializable_type {
-    ( $x:ident,$y:ident ) => {
-        $x.insert($y::type_uuid().unwrap(), DynComponentStruct{
-            Box: $y::dyn_box,
-            Rc: $y::dyn_rc,
-            Arc: $y::dyn_arc,
-        });
-    }
-}
-#[macro_export]
-macro_rules! impl_serializable_dyn_type {
-    ( $x:ident,$y:ident ) => {
-        impl $x {
-            pub fn dyn_box() -> Box<dyn $y> { Box::new($x::default()) }
-            pub fn dyn_rc() -> Rc<dyn $y> { Rc::new($x::default()) }
-            pub fn dyn_arc() -> Arc<dyn $y> { Arc::new($x::default()) }
-        }
-    }
-}
-impl_serializable_dyn_type!(TransformComponent, Component);
-pub unsafe fn init_reflection() {
-    DYN_NEW_REG.get_or_init (|| { DynNewReg::default() });
-    
-    let reg = &mut DYN_NEW_REG.get_mut().unwrap_unchecked().Component;
-    register_serializable_type!(reg, TransformComponent);
-    // let yy = x.downcast::<dyn Component>();
-}
-pub type FARPROC = unsafe extern "system" fn() -> isize;
-pub fn cast_to_function<F>(address: FARPROC, _fn: &F) -> F {
-    unsafe { transmute_copy(&address) }
-}
-#[macro_export]
 macro_rules! impl_vec_ptr_serialize {
     ( $x:ident,$y:ident ) => {
         impl Serializable for Vec<$x<dyn $y>> {
@@ -246,9 +240,15 @@ macro_rules! impl_vec_ptr_serialize {
                 }
             }
 
-            fn deserialize_yaml(&mut self, yaml: &Yaml) {
-                let item = unsafe { (&DYN_NEW_REG.get_unchecked().$y.get(&Uuid::new_v4()).unwrap().$x)() };
-                self.push(item);
+            fn deserialize_yaml(&mut self, data: &Yaml) {
+                let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$y) };
+                let arr = data.as_vec().unwrap();
+                for yaml in arr {
+                    let uuid_str = yaml["type_uuid"].as_str().unwrap();
+                    let uuid = Uuid::from_str(uuid_str).unwrap();
+                    let item = (constructor.get(&uuid).unwrap().$x)();
+                    self.push(item);
+                }
             }
         }
     }
@@ -256,10 +256,9 @@ macro_rules! impl_vec_ptr_serialize {
 impl_vec_ptr_serialize!(Box, Component);
 impl_vec_ptr_serialize!(Rc, Component);
 impl_vec_ptr_serialize!(Arc, Component);
-#[macro_export]
 macro_rules! impl_map_ptr_serialize {
-    ( $x:ident,$y:ident ) => {
-        impl<V> Serializable for HashMap<$x, $y<V>> where V : Serializable + ?Sized {
+    ( $x:ident,$y:ident,$z:ident,$w:ident ) => {
+        impl Serializable for HashMap<$x, $y<dyn $z>> where dyn $z : Serializable {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
@@ -283,14 +282,21 @@ macro_rules! impl_map_ptr_serialize {
             }
 
             fn deserialize_yaml(&mut self, yaml: &Yaml) {
-                todo!()
+                let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$z) };
+                yaml.as_vec().unwrap().iter().for_each(|e| {
+                    let uuid_str = e["type_uuid"].as_str().unwrap();
+                    let uuid = Uuid::from_str(uuid_str).unwrap();
+                    let item = (constructor.get(&uuid).unwrap().$y)();
+                    let tt = item.$w();
+                    self.insert(tt, item);
+                });
             }
         }
     }
 }
-impl_map_ptr_serialize!(TypeId, Box);
-impl_map_ptr_serialize!(TypeId, Rc);
-impl_map_ptr_serialize!(TypeId, Arc);
+impl_map_ptr_serialize!(TypeId, Box, Component, real_type_id);
+impl_map_ptr_serialize!(TypeId, Rc, Component, real_type_id);
+impl_map_ptr_serialize!(TypeId, Arc, Component, real_type_id);
 impl<V> Serializable for HashMap<i64, Pin<Rc<RefCell<V>>>> where V : Serializable + ?Sized {
     fn is_multi_line(&self) -> bool { !self.is_empty() }
     fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }

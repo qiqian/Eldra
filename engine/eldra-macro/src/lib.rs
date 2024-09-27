@@ -8,7 +8,6 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 struct VarInfo<'a> {
-    display : Option<Expr>,
     serialize : bool,
     readonly : bool,
     field : &'a Field,
@@ -23,13 +22,8 @@ fn gen_reflect_info<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_ma
         let field_type = var.field.ty.clone().into_token_stream();
         let serialize = var.serialize;
         let readonly = var.readonly;
-        let display_name = match var.display.clone() {
-            Some(t) => { quote! { Some(#t) } },
-            None => quote! { None },
-        };
         reflected.extend(quote! {
                             v.push(crate::reflection::ReflectVarInfo {
-                                display : #display_name,
                                 serialize : #serialize,
                                 readonly : #readonly,
                                 offset : std::mem::offset_of!(#struct_name, #field_name) as u32,
@@ -65,12 +59,6 @@ fn gen_yaml_serilizer<'a>(struct_name: &Ident, uuid: &Option<proc_macro2::TokenS
             io.write(format!(#readonly, indent.clone() + "  ").as_bytes());
             io.write(format!(#field_name, indent.clone() + "  ").as_bytes());
         });
-        if var.display.is_some() {
-            let d = format!("{{}}display_name : {}\n", var.display.clone().unwrap().to_token_stream().to_string());
-            reflected.extend(quote! {
-                io.write(format!(#d, indent.clone() + "  ").as_bytes());
-            });
-        }
         reflected.extend(quote! {
             io.write(format!("{}value : ", indent.clone() + "  ").as_bytes());
             if self.#field_tag.is_multi_line() {
@@ -147,13 +135,9 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
     // gather ReflectVarInfo
     let mut vars = vec!();
     for f in fields.iter() {
-        let mut var = VarInfo { display: None, serialize: false, readonly: false, field:f };
+        let mut var = VarInfo { serialize: false, readonly: false, field:f };
         for attr in f.attrs.iter() {
-            if attr.path().is_ident("display") {
-                let display_name = attr.meta.require_name_value().unwrap().value.clone();
-                var.display = Some(display_name);
-            }
-            else if attr.path().is_ident("serialize") {
+            if attr.path().is_ident("serialize") {
                 var.serialize = true;
             }
             else if attr.path().is_ident("readonly") {
