@@ -1,10 +1,7 @@
 extern crate core;
 use proc_macro::{TokenStream};
-use std::any::Any;
 use quote::{*};
 use syn::{*};
-use syn::spanned::Spanned;
-use uuid::Uuid;
 
 #[derive(Clone)]
 struct VarInfo<'a> {

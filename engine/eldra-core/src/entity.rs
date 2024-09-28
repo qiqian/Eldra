@@ -8,10 +8,7 @@ use std::ptr::{addr_of};
 use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
 use std::any::type_name;
-use std::ffi::CString;
 use std::fs::File;
-use std::io::{BufWriter, Write};
-use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use uuid::Uuid;
 use eldra_macro::{DropNotify, Reflection};
@@ -103,17 +100,15 @@ impl Components {
             true => {
                 match self.uniq_comp.get(&TypeId::of::<T>()) {
                     Some(cc) => {
-                        let c = unsafe { &**cc };
-                        c.as_any().downcast_ref::<T>()
+                        cc.as_any().downcast_ref::<T>()
                     },
                     None => None,
                 }
             },
             false => {
                 for c in self.multi_comp.iter() {
-                    let cc = unsafe { &**c };
-                    if cc.as_any().is::<T>() {
-                        return cc.as_any().downcast_ref::<T>()
+                    if c.as_any().is::<T>() {
+                        return c.as_any().downcast_ref::<T>()
                     }
                 }
                 None
@@ -218,7 +213,7 @@ impl Entity {
 
 fn entity_destroy(e: &Rc<RefCell<Entity>>) {
     let p = e.borrow().get_parent();
-    if (p.is_some()) {
+    if p.is_some() {
         unsafe { p.unwrap_unchecked() }.borrow_mut().remove_child(e);
     }
     engine_remove(&e.borrow().base.instance_id);
@@ -342,7 +337,7 @@ pub extern "C"
 fn Entity_serialize(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
-        let mut file = File::create(p).unwrap();;
+        let mut file = File::create(p).unwrap();
         entity.borrow().serialize_yaml(&mut file, String::new());
     });
 }

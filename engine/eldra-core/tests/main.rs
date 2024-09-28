@@ -1,5 +1,4 @@
-use std::any::Any;
-use std::ptr::{addr_of, addr_of_mut};
+use std::ptr::addr_of;
 use eldra;
 use eldra::{*};
 use eldra::engine::{*};
@@ -8,13 +7,10 @@ use eldra::comp::transform_component::{*};
 use eldra::reflection::{*};
 use std::ffi::{CStr, CString};
 use std::fs;
-use std::io::{BufReader, Read};
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 use std::os::raw::c_char;
 use std::rc::Rc;
-use std::sync::Arc;
 use nalgebra::{*};
-use yaml_rust2::{YamlLoader, YamlEmitter};
 use std::env::current_dir;
 
 fn test_entity_create() {
@@ -49,7 +45,7 @@ fn test_transform_component() -> u64 {
 
     let _info1 = entity_cast(&c1).unwrap().borrow().reflect_info();
     let _info2 = unsafe {
-            let mut comp = decode_component!(tr2).as_deref_mut().unwrap_unchecked();
+            let comp = decode_component!(tr2).as_deref_mut().unwrap_unchecked();
             comp.as_any_mut().downcast_mut::<TransformComponent>().unwrap_unchecked().reflect_info() };
 
     let mut t1 = Matrix4::<f32>::default();
@@ -75,7 +71,9 @@ fn test_serialize(entity_uuid: u64) {
     let yaml_path = curdir.as_path().join(output_path);
     let yaml_path = yaml_path.as_path().to_str().unwrap();
     println!("serialize to {}", yaml_path);
-    Entity_serialize(entity_uuid, output_path);
+    let output_path_c = convert_c_str(output_path);
+    Entity_serialize(entity_uuid, output_path_c);
+    drop_c_str(output_path_c);
     // deserialize
     let yaml_str = fs::read_to_string(yaml_path).unwrap();
     let e = Entity::pinned();
@@ -96,15 +94,16 @@ fn entity_drop_callback(clz: *const c_char, id: *const c_char) {
     println!("{} {} dropped", cstr_to_str(clz), cstr_to_str(id))
 }
 
+pub(crate) fn convert_c_str(input: &str) -> *mut c_char {
+    let c_str = CString::new(input).unwrap().into_raw();
+    return c_str;
+}
+pub(crate) fn drop_c_str(c_str: *mut c_char) {
+    drop(unsafe { CString::from_raw(c_str) });
+}
+
 #[test]
 fn main() {
-    let b = Box::new(1);
-    let b2 : Box<i32> = Box::from(b);
-    let r:Rc<i32> = Rc::from(b2);
-
-    let b3 = Box::new(1);
-    let a:Arc<i32> = Arc::from(b3);
-
     engine_init(entity_drop_callback);
 
     println!("test entity");

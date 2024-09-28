@@ -1,22 +1,16 @@
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
-use std::mem::transmute_copy;
-use std::ops::Deref;
-use std::pin::Pin;
+use std::io::{Read, Write};
 use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
-use nalgebra::{Dim, Matrix, Matrix4, RawStorage, RawStorageMut, Scalar};
-use nalgebra::iter::RowIter;
+use nalgebra::{Dim, Matrix, RawStorageMut};
 use once_cell::sync::OnceCell;
 use uuid::Uuid;
-use yaml_rust2::Yaml::Hash;
 use yaml_rust2::{Yaml, YamlLoader};
 use crate::comp::transform_component::TransformComponent;
-use crate::engine::ENGINE_ROOT;
 use crate::entity::{Component, Entity};
 
 macro_rules! register_serializable_type {
