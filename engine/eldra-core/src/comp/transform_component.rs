@@ -66,13 +66,6 @@ impl Component for TransformComponent {
     }
 }
 
-fn transform_component_cast(addr : &Option<*mut dyn Component>) -> &mut TransformComponent {
-    unsafe {
-        let a = addr.unwrap_unchecked();
-        &mut*(a as *mut TransformComponent)
-    }
-}
-
 //// exports
 
 fn transform_component_update<F: Fn(&mut TransformComponent)>(me: u64, f: F) -> bool

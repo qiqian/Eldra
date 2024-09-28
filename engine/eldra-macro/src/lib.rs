@@ -36,36 +36,36 @@ fn gen_reflect_info<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_ma
 }
 
 
-fn gen_yaml_serilizer<'a>(struct_name: &Ident, uuid: &Option<proc_macro2::TokenStream>, vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
+fn gen_yaml_serilizer<'a>(uuid: &Option<proc_macro2::TokenStream>, vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
     let mut reflected = quote! {};
     if uuid.is_some() {
         let uuid_str = format!("{{}}type_uuid : {}\n", uuid.clone().unwrap().to_string());
         reflected.extend(quote! {
-                io.write(format!(#uuid_str, indent.clone()).as_bytes());
+                let _ = io.write(format!(#uuid_str, indent.clone()).as_bytes());
             });
     }
     for var in vars {
         let field_tag = var.field.ident.clone().into_token_stream();
         let field_mark = format!("{{}}{} : \n", field_tag.to_string());
         reflected.extend(quote! {
-            io.write(format!(#field_mark, indent.clone()).as_bytes());
+            let _ = io.write(format!(#field_mark, indent.clone()).as_bytes());
         });
         let field_name = format!("{{}}field_name : \"{}\"\n", field_tag.to_string());
         let field_type = format!("{{}}field_type : \"{}\"\n",
              var.field.ty.clone().to_token_stream().to_string().replace(" ", ""));
         let readonly = format!("{{}}readonly : {}\n", var.readonly.to_string());
         reflected.extend(quote! {
-            io.write(format!(#field_type, indent.clone() + "  ").as_bytes());
-            io.write(format!(#readonly, indent.clone() + "  ").as_bytes());
-            io.write(format!(#field_name, indent.clone() + "  ").as_bytes());
+            let _ = io.write(format!(#field_type, indent.clone() + "  ").as_bytes());
+            let _ = io.write(format!(#readonly, indent.clone() + "  ").as_bytes());
+            let _ = io.write(format!(#field_name, indent.clone() + "  ").as_bytes());
         });
         reflected.extend(quote! {
-            io.write(format!("{}value : ", indent.clone() + "  ").as_bytes());
+            let _ = io.write(format!("{}value : ", indent.clone() + "  ").as_bytes());
             if self.#field_tag.is_multi_line() {
-                io.write("\n".as_bytes());
+                let _ = io.write("\n".as_bytes());
             }
             self.#field_tag.serialize_yaml(io, indent.clone() + "    ");
-            io.write("\n".as_bytes());
+            let _ = io.write("\n".as_bytes());
         });
     }
     reflected
@@ -151,7 +151,7 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
     }
 
     let reflected = gen_reflect_info(name, &vars);
-    let yaml_serializer = gen_yaml_serilizer(name, &uuid, &vars);
+    let yaml_serializer = gen_yaml_serilizer(&uuid, &vars);
     let yaml_deerializer = gen_yaml_deserilizer(&vars);
 
     // generate Reflectable trait

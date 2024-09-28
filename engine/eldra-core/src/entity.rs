@@ -1,3 +1,5 @@
+use std::os::raw::c_char;
+use std::ffi::CStr;
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -20,8 +22,6 @@ use crate::comp::transform_component::TransformComponent;
 #[derive(Debug,Reflection)]
 pub struct BaseObject
 {
-    #[serialize]
-    pub id: i64,
     #[display="Name"]
     #[serialize]
     pub name : String,
@@ -37,7 +37,6 @@ impl Default for BaseObject {
     fn default() -> Self {
         let myid = engine_next_global_id();
         BaseObject {
-            id: myid,
             name: myid.to_string(),
             instance_id: Uuid::new_v4(),
             parent: Weak::new(),
@@ -138,7 +137,7 @@ pub struct Entity
     // but Rc is readonly, that leads to Rc<RefCell<_>>
     #[display="Children"]
     #[serialize]
-    children: Vec<Rc<RefCell<Entity>>>,
+    pub children: Vec<Rc<RefCell<Entity>>>,
     #[display="Components"]
     #[serialize]
     components: Components,
@@ -253,7 +252,6 @@ pub extern "C"
 fn Entity_add_child(parent: u64, child: u64) -> bool {
     entity_update(&parent, |p| {
         entity_update(&child, |c| {
-            let cid = c.borrow().base.id;
             p.borrow_mut().add_child(c)
         })
     })
@@ -341,9 +339,9 @@ fn Entity_tick(addr: u64, delta: f32) {
 
 #[no_mangle]
 pub extern "C"
-fn Entity_serialize(addr: u64, path: CString) {
+fn Entity_serialize(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
-        let p = path.to_str().unwrap().to_string();
+        let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
         let mut file = File::create(p).unwrap();;
         entity.borrow().serialize_yaml(&mut file, String::new());
     });

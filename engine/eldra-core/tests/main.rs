@@ -15,7 +15,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use nalgebra::{*};
 use yaml_rust2::{YamlLoader, YamlEmitter};
-
+use std::env::current_dir;
 
 fn test_entity_create() {
     let parent = Entity_new();
@@ -68,15 +68,21 @@ fn test_transform_component() -> u64 {
     c1
 }
 
-fn test_serialize(entity: u64) {
+fn test_serialize(entity_uuid: u64) { 
     // serialize
-    let yaml_path = "../../bin/test.yaml";
-    Entity_serialize(entity, CString::new(yaml_path).unwrap());
+    let output_path = "../bin/test.yaml";
+    let curdir = current_dir().unwrap();
+    let yaml_path = curdir.as_path().join(output_path);
+    let yaml_path = yaml_path.as_path().to_str().unwrap();
+    println!("serialize to {}", yaml_path);
+    Entity_serialize(entity_uuid, output_path);
     // deserialize
     let yaml_str = fs::read_to_string(yaml_path).unwrap();
     let e = Entity::pinned();
     load_from_yaml(e.borrow_mut().deref_mut(), &yaml_str);
-    println!("deserialize done");
+    let entity = e.borrow();
+    let c = entity.children.first().unwrap();
+    println!("deserialize done {}/{}", Rc::strong_count(c), Rc::weak_count(c));
 }
 pub fn cstr_to_str(c_buf: *const c_char) -> &'static str {
     unsafe {
@@ -110,5 +116,6 @@ fn main() {
     println!("test serialize");
     test_serialize(entity);
 
+    println!("test cleanup");
     Entity_destroy(entity);
 }

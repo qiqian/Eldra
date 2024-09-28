@@ -59,7 +59,7 @@ pub fn engine_remove(id : &Uuid) -> Option<Pin<Rc<dyn Any>>> {
     }
 }
 
-pub unsafe fn convert_c_str(input: &str) -> *mut c_char {
+pub(crate) unsafe fn convert_c_str(input: &str) -> *mut c_char {
     let c_str = CString::new(input).unwrap().into_raw();
     return c_str;
 }

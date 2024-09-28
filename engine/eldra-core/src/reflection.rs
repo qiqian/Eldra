@@ -76,22 +76,22 @@ impl Serializable for bool {
     fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
     fn serialize_binary(&self, io: &mut dyn Write) {
         let d: [u8; 1] = [if *self { 1 } else { 0 } ];
-        io.write(&d);
+        let _ = io.write(&d);
     }
 
     fn deserialize_binary(&mut self, io: &mut dyn Read) {
         let mut d: [u8; 1] = [0];
-        io.read(&mut d);
-        unsafe { *addr_of_mut!(*self) = (d[0] == 0); };
+        let _ = io.read(&mut d);
+        unsafe { *addr_of_mut!(*self) = d[0] == 0; };
     }
 
-    fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
-        io.write(self.to_string().as_bytes());
+    fn serialize_yaml(&self, io: &mut dyn Write, _indent: String) {
+        let _ = io.write(self.to_string().as_bytes());
     }
 
     fn deserialize_yaml(&mut self, yaml: &Yaml) {
         match yaml.as_bool() {
-            Some(v) => unsafe { *self = v; },
+            Some(v) => { *self = v; },
             None => {},
         }
     }
@@ -103,25 +103,23 @@ macro_rules! impl_primitive_serialize {
             fn is_multi_line(&self) -> bool { false }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
-                io.write(self.to_le_bytes().as_ref());
+                let _ = io.write(self.to_le_bytes().as_ref());
             }
 
             fn deserialize_binary(&mut self, io: &mut dyn Read) {
-                unsafe {
-                    let mut bytes = self.to_le_bytes();
-                    let me = bytes.as_mut();
-                    io.read(me);
-                    unsafe { *addr_of_mut!(*self) = <$x>::from_le_bytes(bytes); };
-                };
+                let mut bytes = self.to_le_bytes();
+                let me = bytes.as_mut();
+                let _ = io.read(me);
+                unsafe { *addr_of_mut!(*self) = <$x>::from_le_bytes(bytes); };
             }
 
-            fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
-                io.write(self.to_string().as_bytes());
+            fn serialize_yaml(&self, io: &mut dyn Write, _indent: String) {
+                let _ = io.write(self.to_string().as_bytes());
             }
 
             fn deserialize_yaml(&mut self, yaml: &Yaml) {
                 match yaml.$yamlconv() {
-                    Some(v) => unsafe { *self = v as $x; },
+                    Some(v) => { *self = v as $x; },
                     None => {},
                 }
             }
@@ -148,15 +146,15 @@ impl<T, R, C, S> Serializable for Matrix<T, R, C, S> where T: Serializable + Def
         todo!()
     }
 
-    fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
-        io.write("[ ".as_bytes());
+    fn serialize_yaml(&self, io: &mut dyn Write, _indent: String) {
+        let _ = io.write("[ ".as_bytes());
         for col in self.column_iter() {
             for e in col.iter() {
-                io.write(e.to_string().as_bytes());
-                io.write(", ".as_bytes());
+                let _ = io.write(e.to_string().as_bytes());
+                let _ = io.write(", ".as_bytes());
             }
         }
-        io.write("]\n".as_bytes());
+        let _ = io.write("]\n".as_bytes());
     }
 
     fn deserialize_yaml(&mut self, yaml: &Yaml) {
@@ -177,8 +175,8 @@ impl Serializable for String {
         todo!()
     }
 
-    fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
-        io.write(format!("\"{}\"", self).as_bytes());
+    fn serialize_yaml(&self, io: &mut dyn Write, _indent: String) {
+        let _ = io.write(format!("\"{}\"", self).as_bytes());
     }
 
     fn deserialize_yaml(&mut self, yaml: &Yaml) {
@@ -196,8 +194,8 @@ impl Serializable for Uuid {
         todo!()
     }
 
-    fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
-        io.write(format!("\"{}\"", self.to_string()).as_bytes());
+    fn serialize_yaml(&self, io: &mut dyn Write, _indent: String) {
+        let _ = io.write(format!("\"{}\"", self.to_string()).as_bytes());
     }
 
     fn deserialize_yaml(&mut self, yaml: &Yaml) {
@@ -219,18 +217,18 @@ macro_rules! impl_vec_ptr_serialize {
 
             fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
                 if self.is_empty() {
-                    io.write("[]".as_bytes());
+                    let _ = io.write("[]".as_bytes());
                 }
                 else {
                     for item in self.iter() {
-                        io.write(format!("{}- array_item : \n", indent.clone()).as_bytes());
+                        let _ = io.write(format!("{}- array_item : \n", indent.clone()).as_bytes());
                         item.serialize_yaml(io, indent.clone() + "  ");
                     }
                 }
             }
 
             fn deserialize_yaml(&mut self, data: &Yaml) {
-                println!("deserialize dyn {:?}", data);
+                // println!("deserialize dyn array-item {:?}", data);
                 let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$y) };
                 let arr = data.as_vec().unwrap();
                 for yaml in arr {
@@ -263,11 +261,11 @@ macro_rules! impl_vec_concrete_serialize {
 
             fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
                 if self.is_empty() {
-                    io.write("[]".as_bytes());
+                    let _ = io.write("[]".as_bytes());
                 }
                 else {
                     for item in self.iter() {
-                        io.write(format!("{}- array_item : \n", indent.clone()).as_bytes());
+                        let _ = io.write(format!("{}- array_item : \n", indent.clone()).as_bytes());
                         item.borrow().serialize_yaml(io, indent.clone() + "  ");
                     }
                 }
@@ -275,7 +273,7 @@ macro_rules! impl_vec_concrete_serialize {
 
             fn deserialize_yaml(&mut self, data: &Yaml) {
                 for yaml in data.as_vec().unwrap() {
-                    println!("deserialize concrete {:?}", yaml);
+                    // println!("deserialize concrete {:?}", yaml);
                     let item = $y::$f();
                     item.$m().deserialize_yaml(yaml);
                     self.push(item);
@@ -301,11 +299,11 @@ macro_rules! impl_map_ptr_serialize {
 
             fn serialize_yaml(&self, io: &mut dyn Write, indent: String) {
                 if self.is_empty() {
-                    io.write("[]".as_bytes());
+                    let _ = io.write("[]".as_bytes());
                 }
                 else {
                     for item in self.iter() {
-                        io.write(format!("{}- map_item : \n", indent.clone()).as_bytes());
+                        let _ = io.write(format!("{}- map_item : \n", indent.clone()).as_bytes());
                         item.1.serialize_yaml(io, indent.clone() + "  ");
                     }
                 }
@@ -314,6 +312,7 @@ macro_rules! impl_map_ptr_serialize {
             fn deserialize_yaml(&mut self, yaml: &Yaml) {
                 let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$z) };
                 yaml.as_vec().unwrap().iter().for_each(|e| {
+                    // println!("desrialze dyn map item {:?}", e);
                     let uuid_str = e["type_uuid"].as_str().unwrap();
                     let uuid = Uuid::from_str(uuid_str).unwrap();
                     let mut item = (constructor.get(&uuid).unwrap())();
