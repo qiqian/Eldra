@@ -1,3 +1,4 @@
+use std::io::BufWriter;
 use std::os::raw::c_char;
 use std::ffi::CStr;
 use std::any::{Any, TypeId};
@@ -337,7 +338,8 @@ pub extern "C"
 fn Entity_serialize(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
-        let mut file = File::create(p).unwrap();
-        entity.borrow().serialize_yaml(&mut file, String::new());
+        let file = File::create(p).unwrap();
+        let mut writer = BufWriter::new(file);
+        entity.borrow().serialize_yaml(&mut writer, String::new());
     });
 }
