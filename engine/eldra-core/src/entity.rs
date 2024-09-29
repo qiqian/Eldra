@@ -141,13 +141,17 @@ pub struct Entity
 impl Entity {
     // caller should decide to whether engine_pin or root_entity.add_child for this new entity
     pub fn pinned() -> Rc<RefCell<Entity>> {
+        let entity = Entity::new();
+        engine_pin(entity.borrow().base.instance_id, unsafe { Pin::new_unchecked(entity.clone()) });
+        entity
+    }
+    pub fn new() -> Rc<RefCell<Entity>> {
         let entity = Rc::new(RefCell::new(Entity::default()));
 
         let addr = addr_of!(*entity) as u64;
         entity.borrow_mut().marker_address = addr;
         entity.borrow_mut().myself = Rc::downgrade(&entity.clone());
 
-        engine_pin(entity.borrow().base.instance_id, unsafe { Pin::new_unchecked(entity.clone()) });
         entity
     }
     pub fn add_child(&mut self, c: Rc<RefCell<Entity>>) -> bool {
@@ -200,9 +204,9 @@ impl Entity {
         self.components.get_component::<T>()
     }
     pub fn tick(&mut self, delta: f32, parent: &Option<&Components>) {
-        self.components.uniq_comp.iter_mut().map(|c| {
+        for c in self.components.uniq_comp.iter_mut() {
             c.1.tick(delta, parent);
-        });
+        }
         for c in self.components.multi_comp.iter_mut() {
             c.tick(delta, parent);
         }
@@ -335,7 +339,17 @@ fn Entity_tick(addr: u64, delta: f32) {
 
 #[no_mangle]
 pub extern "C"
-fn Entity_serialize(addr: u64, path: *const c_char) {
+fn Entity_serialize_binary(addr: u64, path: *const c_char) {
+    entity_update(&addr, |entity| {
+        let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
+        let file = File::create(p).unwrap();
+        let mut writer = BufWriter::new(file);
+        entity.borrow().serialize_binary(&mut writer);
+    });
+}
+#[no_mangle]
+pub extern "C"
+fn Entity_serialize_yaml(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
         let file = File::create(p).unwrap();

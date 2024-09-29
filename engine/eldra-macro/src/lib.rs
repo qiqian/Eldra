@@ -33,36 +33,30 @@ fn gen_reflect_info<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_ma
 }
 
 
-fn gen_yaml_serilizer<'a>(uuid: &Option<proc_macro2::TokenStream>, vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
+fn gen_yaml_serilizer<'a>(vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
     let mut reflected = quote! {};
-    if uuid.is_some() {
-        let uuid_str = format!("{{}}type_uuid : {}\n", uuid.clone().unwrap().to_string());
-        reflected.extend(quote! {
-                let _ = io.write(format!(#uuid_str, indent.clone()).as_bytes());
-            });
-    }
     for var in vars {
         let field_tag = var.field.ident.clone().into_token_stream();
         let field_mark = format!("{{}}{} : \n", field_tag.to_string());
         reflected.extend(quote! {
-            let _ = io.write(format!(#field_mark, indent.clone()).as_bytes());
+            let _ = io.write_all(format!(#field_mark, indent.clone()).as_bytes());
         });
         let field_name = format!("{{}}field_name : \"{}\"\n", field_tag.to_string());
         let field_type = format!("{{}}field_type : \"{}\"\n",
              var.field.ty.clone().to_token_stream().to_string().replace(" ", ""));
         let readonly = format!("{{}}readonly : {}\n", var.readonly.to_string());
         reflected.extend(quote! {
-            let _ = io.write(format!(#field_type, indent.clone() + "  ").as_bytes());
-            let _ = io.write(format!(#readonly, indent.clone() + "  ").as_bytes());
-            let _ = io.write(format!(#field_name, indent.clone() + "  ").as_bytes());
+            let _ = io.write_all(format!(#field_type, indent.clone() + "  ").as_bytes());
+            let _ = io.write_all(format!(#readonly, indent.clone() + "  ").as_bytes());
+            let _ = io.write_all(format!(#field_name, indent.clone() + "  ").as_bytes());
         });
         reflected.extend(quote! {
-            let _ = io.write(format!("{}value : ", indent.clone() + "  ").as_bytes());
+            let _ = io.write_all(format!("{}value : ", indent.clone() + "  ").as_bytes());
             if self.#field_tag.is_multi_line() {
-                let _ = io.write("\n".as_bytes());
+                let _ = io.write_all("\n".as_bytes());
             }
             self.#field_tag.serialize_yaml(io, indent.clone() + "    ");
-            let _ = io.write("\n".as_bytes());
+            let _ = io.write_all("\n".as_bytes());
         });
     }
     reflected
@@ -87,6 +81,29 @@ fn gen_yaml_deserilizer<'a>(vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream
     }
     reflected
 }
+
+fn gen_binary_serilizer<'a>(vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
+    let mut reflected = quote! {};
+    for var in vars {
+        let field_ident = var.field.ident.clone().into_token_stream();
+        reflected.extend(quote! {
+            let _ = self.#field_ident.serialize_binary(io);
+        });
+    }
+    reflected
+}
+
+fn gen_binary_deserilizer<'a>(vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
+    let mut reflected = quote! {};
+    for var in vars {
+        let field_ident = var.field.ident.clone().into_token_stream();
+        reflected.extend(quote! {
+            let _ = self.#field_ident.deserialize_binary(io);
+        });
+    }
+    reflected
+}
+
 
 #[proc_macro_derive(Reflection, attributes(uuid, display, serialize, readonly))]
 pub fn gen_reflection(input: TokenStream) -> TokenStream {
@@ -148,8 +165,10 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
     }
 
     let reflected = gen_reflect_info(name, &vars);
-    let yaml_serializer = gen_yaml_serilizer(&uuid, &vars);
+    let yaml_serializer = gen_yaml_serilizer(&vars);
     let yaml_deerializer = gen_yaml_deserilizer(&vars);
+    let binary_serializer = gen_binary_serilizer(&vars);
+    let binary_deerializer = gen_binary_deserilizer(&vars);
 
     // generate Reflectable trait
     my_token.extend(quote! {
@@ -163,10 +182,10 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
             fn is_multi_line(&self) -> bool { true }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { #name::type_uuid() }
             fn serialize_binary(&self, io: &mut dyn std::io::Write) {
-
+                #binary_serializer
             }
             fn deserialize_binary(&mut self, io: &mut dyn std::io::Read) {
-
+                #binary_deerializer
             }
             fn serialize_yaml(&self, io: &mut dyn std::io::Write, indent: String) {
                 #yaml_serializer

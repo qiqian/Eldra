@@ -72,7 +72,7 @@ fn test_serialize(entity_uuid: u64) {
     let yaml_path = yaml_path.as_path().to_str().unwrap();
     println!("serialize to {}", yaml_path);
     let output_path_c = convert_c_str(output_path);
-    Entity_serialize(entity_uuid, output_path_c);
+    Entity_serialize_yaml(entity_uuid, output_path_c);
     drop_c_str(output_path_c);
     // deserialize
     let yaml_str = fs::read_to_string(yaml_path).unwrap();

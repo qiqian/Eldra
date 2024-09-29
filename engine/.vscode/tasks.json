@@ -5,7 +5,7 @@
 			"type": "cargo",
 			"command": "build",
 			"args": [
-				"--all-targets"
+				"--tests"
 			],
 			"problemMatcher": [
 				"$rustc"

@@ -1,25 +1,25 @@
 {
     "configurations": [
         {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Cargo test main",
-            "cargo": {
-              "args": [
-                "test",
-                "-p",
-                "eldra-core",
-                "--test",
-                "main",
-                "--no-run",
-                "--lib"
-              ],
-              "problemMatcher": "$rustc",  
-              "filter": { "name": "main" }
-            },
-            "program": "${cargo:program}",
-            "args": ["--nocapture"],
-            "cwd": "${workspaceFolder}"
+          "type": "lldb",
+          "request": "launch",
+          "name": "Cargo test main",
+          "cargo": {
+            "args": [
+              "test",
+              "-p",
+              "eldra-core",
+              "--test",
+              "main",
+              "--no-run",
+            ],
+            "problemMatcher": "$rustc",  
+            "filter": { "name": "main" }
           },
+          "program": "${cargo:program}",
+          "args": ["--nocapture"],
+          "cwd": "${workspaceFolder}",
+          "stopOnEntry": false,
+        },
     ]
 }
