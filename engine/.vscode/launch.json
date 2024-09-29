@@ -7,19 +7,21 @@
           "cargo": {
             "args": [
               "test",
-              "-p",
-              "eldra-core",
-              "--test",
-              "main",
+              "-p=eldra-core",
+              "--test=main",
               "--no-run",
             ],
             "problemMatcher": "$rustc",  
-            "filter": { "name": "main" }
+            "filter": { 
+              "name": "main",
+              "kind": "test" 
+            }
           },
           "program": "${cargo:program}",
           "args": ["--nocapture"],
-          "cwd": "${workspaceFolder}",
+          "cwd": "${workspaceFolder}/eldra-core",
           "stopOnEntry": false,
+          "preLaunchTask": "build",
         },
     ]
 }

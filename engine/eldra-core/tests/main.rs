@@ -6,11 +6,7 @@ use eldra::entity::{*};
 use eldra::comp::transform_component::{*};
 use eldra::reflection::{*};
 use std::ffi::{CStr, CString};
-use std::fs;
-use std::fs::File;
-use std::ops::DerefMut;
 use std::os::raw::c_char;
-use std::rc::Rc;
 use nalgebra::{*};
 use std::env::current_dir;
 
@@ -67,7 +63,7 @@ fn test_transform_component() -> u64 {
 
 fn test_serialize_yaml(entity_uuid: u64) { 
     // serialize
-    let output_path = "../bin/test.yaml";
+    let output_path = "../../bin/test.yaml";
     let curdir = current_dir().unwrap();
     let yaml_path = curdir.as_path().join(output_path);
     let yaml_path = yaml_path.as_path().to_str().unwrap();
@@ -83,11 +79,11 @@ fn test_serialize_yaml(entity_uuid: u64) {
 }
 fn test_serialize_binary(entity_uuid: u64) { 
     // serialize
-    let output_path = "../bin/test.bin";
+    let output_path = "../../bin/test.bin";
     let curdir = current_dir().unwrap();
-    let yaml_path = curdir.as_path().join(output_path);
-    let yaml_path = yaml_path.as_path().to_str().unwrap();
-    println!("serialize binary to {}", yaml_path);
+    let binary_path = curdir.as_path().join(output_path);
+    let binary_path = binary_path.as_path().to_str().unwrap();
+    println!("serialize binary to {}", binary_path);
     let output_path_c = convert_c_str(output_path);
     Entity_serialize_binary(entity_uuid, output_path_c);
     // deserialize

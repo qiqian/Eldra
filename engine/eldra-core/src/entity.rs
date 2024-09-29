@@ -1,5 +1,6 @@
 use std::io::BufWriter;
 use std::io::BufReader;
+use std::io::Write;
 use std::ops::DerefMut;
 use std::os::raw::c_char;
 use std::ffi::CStr;
@@ -23,23 +24,13 @@ use crate::comp::transform_component::TransformComponent;
 #[derive(Debug,Reflection)]
 pub struct BaseObject
 {
-    #[display="Name"]
-    #[serialize]
-    pub name : String,
-    #[display="UUID"]
-    #[serialize]
-    pub instance_id : Uuid,
-
     pub parent: Weak<RefCell<Entity>>,
 
     _marker_: PhantomPinned,
 }
 impl Default for BaseObject {
     fn default() -> Self {
-        let myid = engine_next_global_id();
         BaseObject {
-            name: myid.to_string(),
-            instance_id: Uuid::new_v4(),
             parent: Weak::new(),
             _marker_: PhantomPinned,
         }
@@ -121,12 +112,24 @@ impl Components {
     }
 }
 
-#[derive(Default,Reflection,DropNotify)]
+#[derive(Reflection,DropNotify)]
 #[uuid="1d9f39bc-ed1b-4868-8475-67b8d3caf88c"]
 pub struct Entity
 {
     #[serialize]
     pub base: BaseObject,
+    
+    #[display="Name"]
+    #[serialize]
+    pub name : String,
+    
+    #[display="Template UUID"]
+    #[serialize]
+    pub template_uuid : Uuid,
+
+    #[display="Instance ID"]
+    pub instance_id : i64,
+
     myself: Weak<RefCell<Entity>>,
     // Entity is shared in engine, we use Rc<RefCell>
     // the 1st Rc<RefCell> is used as address marker for scripting
@@ -145,11 +148,22 @@ impl Entity {
     // caller should decide to whether engine_pin or root_entity.add_child for this new entity
     pub fn pinned() -> Rc<RefCell<Entity>> {
         let entity = Entity::new();
-        engine_pin(entity.borrow().base.instance_id, unsafe { Pin::new_unchecked(entity.clone()) });
+        engine_pin(entity.borrow().instance_id, unsafe { Pin::new_unchecked(entity.clone()) });
         entity
     }
     pub fn new() -> Rc<RefCell<Entity>> {
-        let entity = Rc::new(RefCell::new(Entity::default()));
+        let myid = engine_next_global_id();
+        let entity = Rc::new(RefCell::new(
+            Entity { 
+                base: Default::default(), 
+                name: myid.to_string(),
+                template_uuid: Uuid::new_v4(),
+                instance_id: myid,
+                myself: Weak::new(), 
+                marker_address: 0, 
+                children: Default::default(), 
+                components: Default::default() 
+            }));
 
         let addr = addr_of!(*entity) as u64;
         entity.borrow_mut().marker_address = addr;
@@ -158,7 +172,7 @@ impl Entity {
         entity
     }
     pub fn add_child(&mut self, c: Rc<RefCell<Entity>>) -> bool {
-        let iid = c.borrow().base.instance_id;
+        let iid = c.borrow().instance_id;
         if !c.borrow().has_parent() {
             // c.parent <- p
             c.borrow_mut().base.parent = self.myself.clone();
@@ -171,26 +185,26 @@ impl Entity {
         }
     }
     pub fn remove_child(&mut self, c: &Rc<RefCell<Entity>>) -> bool {
-        let instance_id = c.borrow().base.instance_id;
+        let instance_id = c.borrow().instance_id;
         if !c.borrow().has_parent() {
             println!("entity:{instance_id} has no parent");
             false
         }
         else {
             if (c.borrow().base.parent.as_ptr() as u64) != self.marker_address {
-                let myid = self.base.instance_id;
+                let myid = self.instance_id;
                 println!("entity:{instance_id} is not my:{myid} child");
                 false
             }
             else {
                 for i in 0..self.children.len() {
-                    if self.children[i].borrow().base.instance_id == instance_id {
+                    if self.children[i].borrow().instance_id == instance_id {
                         c.borrow_mut().base.parent = Weak::new();
                         self.children.remove(i);
                         return true
                     }
                 }
-                let myid = self.base.instance_id;
+                let myid = self.instance_id;
                 println!("entity:{instance_id} not found in my:{myid} child");
                 false
             }
@@ -224,7 +238,7 @@ fn entity_destroy(e: &Rc<RefCell<Entity>>) {
     if p.is_some() {
         unsafe { p.unwrap_unchecked() }.borrow_mut().remove_child(e);
     }
-    engine_remove(&e.borrow().base.instance_id);
+    engine_remove(&e.borrow().instance_id);
 }
 
 //// exports
@@ -345,8 +359,9 @@ pub extern "C"
 fn Entity_serialize_binary(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
-        let file = File::create(p).unwrap();
-        entity.borrow().serialize_binary(&mut BufWriter::new(file));
+        let mut file = BufWriter::new(File::create(p).unwrap());
+        entity.borrow().serialize_binary(&mut file);
+        let _ = file.flush();
     });
 }
 #[no_mangle]
@@ -354,7 +369,7 @@ pub extern "C"
 fn Entity_deserialize_binary(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {      
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
-        let file = File::create(p).unwrap();
+        let file = File::open(p).unwrap();
         entity.borrow_mut().deserialize_binary(&mut BufReader::new(file)); 
     });
 }
@@ -363,8 +378,9 @@ pub extern "C"
 fn Entity_serialize_yaml(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
-        let file = File::create(p).unwrap();
-        entity.borrow().serialize_yaml(&mut BufWriter::new(file), String::new());
+        let mut file = BufWriter::new(File::create(p).unwrap());
+        entity.borrow().serialize_yaml(&mut file, String::new());
+        let _ = file.flush();
     });
 }
 #[no_mangle]

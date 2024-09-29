@@ -3,6 +3,7 @@
 	"tasks": [
 		{
 			"type": "cargo",
+			"label": "build",
 			"command": "build",
 			"args": [
 				"--tests"
@@ -11,7 +12,6 @@
 				"$rustc"
 			],
 			"group": "build",
-			"label": "rust: cargo build"
 		}
 	]
 }

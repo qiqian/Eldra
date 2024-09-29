@@ -168,20 +168,19 @@ impl Serializable for String {
     fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
     fn serialize_binary(&self, io: &mut dyn Write) {
         let data = self.as_bytes();
-        let _ = io.write_all(&(data.len() as u64).to_le_bytes());
+        let len = data.len() as i64;
+        len.serialize_binary(io);
         let _ = io.write_all(data);
     }
 
     fn deserialize_binary(&mut self, io: &mut dyn Read) {
-        let mut len_bytes : MaybeUninit<[u8; 8]> = MaybeUninit::uninit();
-        unsafe {
-            let _ = io.read_exact(len_bytes.assume_init_mut());
-            let len = u64::from_le_bytes(len_bytes.assume_init()) as usize;
-            let mut str = Vec::with_capacity(len);
-            str.set_len(len);
-            let _ = io.read_exact(str.as_mut());
-            *self = String::from_raw_parts(str.as_mut_ptr(), len, len);
-        }
+        let mut len: i64 = 0;
+        len.deserialize_binary(io);
+        let len = len as usize;
+        let mut str = Vec::<u8>::with_capacity(len);
+        unsafe { str.set_len(len); }
+        let _ = io.read_exact(str.as_mut());
+        *self = String::from_utf8(str).expect("Malformed string");
     }
 
     fn serialize_yaml(&self, io: &mut dyn Write, _indent: String) {
@@ -200,11 +199,10 @@ impl Serializable for Uuid {
     }
 
     fn deserialize_binary(&mut self, io: &mut dyn Read) {
-        let mut bytes: MaybeUninit<[u8; 16]> = MaybeUninit::uninit();
-        unsafe { 
-            let _ = io.read_exact(bytes.assume_init_mut());
-            *self = Uuid::from_bytes(bytes.assume_init());
-        }
+        let bytes: MaybeUninit<[u8; 16]> = MaybeUninit::uninit();
+        let mut buf = unsafe { bytes.assume_init() };
+        let _ = io.read_exact(&mut buf);
+        *self = Uuid::from_bytes(buf);
     }
 
     fn serialize_yaml(&self, io: &mut dyn Write, _indent: String) {
@@ -221,7 +219,7 @@ macro_rules! impl_vec_ptr_serialize {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
-                let _ = io.write_all(&(self.len() as u64).to_le_bytes());
+                (self.len() as i64).serialize_binary(io);
                 for v in self.iter() {
                     v.get_type_uuid().unwrap().serialize_binary(io);
                     v.serialize_binary(io);
@@ -229,19 +227,17 @@ macro_rules! impl_vec_ptr_serialize {
             }
 
             fn deserialize_binary(&mut self, io: &mut dyn Read) {
-                let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$y) };
-                let mut len_bytes : MaybeUninit<[u8; 8]> = MaybeUninit::uninit();
+                let mut len: i64 = 0;
+                len.deserialize_binary(io);
                 let mut uuid: MaybeUninit<Uuid> = MaybeUninit::uninit();
-                unsafe {
-                    let _ = io.read_exact(len_bytes.assume_init_mut());
-                    let len = u64::from_le_bytes(len_bytes.assume_init()) as usize;
-                    for _i in 0..len {
-                        uuid.assume_init_mut().deserialize_binary(io);
-                        let mut item = (constructor.get(&uuid.assume_init()).unwrap())();
-                        item.deserialize_binary(io);
-                        let item_ : $x<dyn $y> = $x::from(item);
-                        self.push(item_);
-                    }
+                let uuid_ref = unsafe { uuid.assume_init_mut() };
+                let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$y) };
+                for _i in 0..len {
+                    uuid_ref.deserialize_binary(io);
+                    let mut item = (constructor.get(uuid_ref).unwrap())();
+                    item.deserialize_binary(io);
+                    let item_ : $x<dyn $y> = $x::from(item);
+                    self.push(item_);
                 }
             }
 
@@ -283,22 +279,19 @@ macro_rules! impl_vec_concrete_serialize {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
-                let _ = io.write_all(&(self.len() as u64).to_le_bytes());
+                (self.len() as i64).serialize_binary(io);
                 for v in self.iter() {
                     v.$ref().serialize_binary(io);
                 }
             }
 
             fn deserialize_binary(&mut self, io: &mut dyn Read) {
-                let mut len_bytes : MaybeUninit<[u8; 8]> = MaybeUninit::uninit();
-                unsafe {
-                    let _ = io.read_exact(len_bytes.assume_init_mut());
-                    let len = u64::from_le_bytes(len_bytes.assume_init()) as usize;
-                    for _i in 0..len {
-                        let item = $y::$cons();
-                        item.$mut().deserialize_binary(io);
-                        self.push(item);
-                    }
+                let mut len: i64 = 0;
+                len.deserialize_binary(io);
+                for _i in 0..len {
+                    let item = $y::$cons();
+                    item.$mut().deserialize_binary(io);
+                    self.push(item);
                 }
             }
 
@@ -333,7 +326,7 @@ macro_rules! impl_map_ptr_serialize {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
-                let _ = io.write_all(&(self.len() as u64).to_le_bytes());
+                (self.len() as i64).serialize_binary(io);
                 for v in self.iter() {
                     v.1.get_type_uuid().unwrap().serialize_binary(io);
                     v.1.serialize_binary(io);
@@ -341,20 +334,18 @@ macro_rules! impl_map_ptr_serialize {
             }
 
             fn deserialize_binary(&mut self, io: &mut dyn Read) {
-                let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$t) };
-                let mut len_bytes : MaybeUninit<[u8; 8]> = MaybeUninit::uninit();
+                let mut len: i64 = 0;
+                len.deserialize_binary(io);
                 let mut uuid: MaybeUninit<Uuid> = MaybeUninit::uninit();
-                unsafe {
-                    let _ = io.read_exact(len_bytes.assume_init_mut());
-                    let len = u64::from_le_bytes(len_bytes.assume_init()) as usize;
-                    for _i in 0..len {
-                        uuid.assume_init_mut().deserialize_binary(io);
-                        let mut item = (constructor.get(&uuid.assume_init()).unwrap())();
-                        item.deserialize_binary(io);
-                        let tt = item.$key();
-                        let item_ : $C<dyn $t> = $C::from(item);
-                        self.insert(tt, item_);
-                    }
+                let uuid_ref = unsafe { uuid.assume_init_mut() };
+                let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$t) };
+                for _i in 0..len {
+                    uuid_ref.deserialize_binary(io);
+                    let mut item = (constructor.get(uuid_ref).unwrap())();
+                    item.deserialize_binary(io);
+                    let tt = item.$key();
+                    let item_ : $C<dyn $t> = $C::from(item);
+                    self.insert(tt, item_);
                 }
             }
 
@@ -396,7 +387,5 @@ pub(crate) fn load_from_yaml(root: &mut dyn Serializable, data: &String) {
     let doc = &docs[0];
     root.deserialize_yaml(doc);
 }
-
-// binary loader
 
 

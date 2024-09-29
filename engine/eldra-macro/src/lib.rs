@@ -41,14 +41,10 @@ fn gen_yaml_serilizer<'a>(vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
         reflected.extend(quote! {
             let _ = io.write_all(format!(#field_mark, indent.clone()).as_bytes());
         });
-        let field_name = format!("{{}}field_name : \"{}\"\n", field_tag.to_string());
         let field_type = format!("{{}}field_type : \"{}\"\n",
              var.field.ty.clone().to_token_stream().to_string().replace(" ", ""));
-        let readonly = format!("{{}}readonly : {}\n", var.readonly.to_string());
         reflected.extend(quote! {
             let _ = io.write_all(format!(#field_type, indent.clone() + "  ").as_bytes());
-            let _ = io.write_all(format!(#readonly, indent.clone() + "  ").as_bytes());
-            let _ = io.write_all(format!(#field_name, indent.clone() + "  ").as_bytes());
         });
         reflected.extend(quote! {
             let _ = io.write_all(format!("{}value : ", indent.clone() + "  ").as_bytes());
@@ -148,11 +144,13 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
 
     // gather ReflectVarInfo
     let mut vars = vec!();
+    let mut has_serializable_fields = false;
     for f in fields.iter() {
         let mut var = VarInfo { serialize: false, readonly: false, field:f };
         for attr in f.attrs.iter() {
             if attr.path().is_ident("serialize") {
                 var.serialize = true;
+                has_serializable_fields = true;
             }
             else if attr.path().is_ident("readonly") {
                 var.readonly = true;
@@ -179,7 +177,7 @@ pub fn gen_reflection(input: TokenStream) -> TokenStream {
             fn reflect_info(&self) -> std::vec::Vec<crate::reflection::ReflectVarInfo> { #reflected }
         }
         impl crate::reflection::Serializable for #name {
-            fn is_multi_line(&self) -> bool { true }
+            fn is_multi_line(&self) -> bool { #has_serializable_fields }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { #name::type_uuid() }
             fn serialize_binary(&self, io: &mut dyn std::io::Write) {
                 #binary_serializer
@@ -212,7 +210,7 @@ pub fn gen_drop_notify(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         impl Drop for #name {
             fn drop(&mut self) {
-                engine_notify_drop_object(type_name::<#name>(), &self.base.instance_id);
+                engine_notify_drop_object(type_name::<#name>(), &self.instance_id);
             }
         }
     })

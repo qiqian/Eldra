@@ -6,7 +6,6 @@ use once_cell::sync::OnceCell;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::rc::Rc;
-use uuid::Uuid;
 use crate::reflection::init_reflection;
 
 pub fn engine_init(drop_callback: ObjDropCallback) {
@@ -23,7 +22,7 @@ pub struct Engine
     pub uid_generator : AtomicI64,
 
     // instance-id -> pointer
-    pub object_registry : HashMap<Uuid, Pin<Rc<dyn Any>>>,
+    pub object_registry : HashMap<i64, Pin<Rc<dyn Any>>>,
 
     pub on_obj_drop_callback: ObjDropCallback,
 }
@@ -44,13 +43,13 @@ pub fn engine_next_global_id() -> i64
         ENGINE_ROOT.get_unchecked().uid_generator.fetch_add(1, Ordering::Acquire)
     }
 }
-pub fn engine_pin(id: Uuid, pin: Pin<Rc<dyn Any>>) {
+pub fn engine_pin(id: i64, pin: Pin<Rc<dyn Any>>) {
     unsafe {
         ENGINE_ROOT.get_mut().unwrap().object_registry.insert(id, pin);
     }
 }
 
-pub fn engine_remove(id : &Uuid) -> Option<Pin<Rc<dyn Any>>> {
+pub fn engine_remove(id : &i64) -> Option<Pin<Rc<dyn Any>>> {
     unsafe {
         ENGINE_ROOT.get_mut().unwrap().object_registry.remove(&id)
     }
@@ -63,7 +62,7 @@ pub(crate) unsafe fn convert_c_str(input: &str) -> *mut c_char {
 pub(crate) unsafe fn drop_c_str(c_str: *mut c_char) {
     drop(CString::from_raw(c_str));
 }
-pub fn engine_notify_drop_object(clz: &'static str, id : &Uuid) {
+pub fn engine_notify_drop_object(clz: &'static str, id : &i64) {
     let c_str = CString::new(clz).unwrap();
     let id_str = CString::new(id.to_string()).unwrap();
     unsafe {
