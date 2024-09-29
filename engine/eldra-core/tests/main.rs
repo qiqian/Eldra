@@ -7,6 +7,7 @@ use eldra::comp::transform_component::{*};
 use eldra::reflection::{*};
 use std::ffi::{CStr, CString};
 use std::fs;
+use std::fs::File;
 use std::ops::DerefMut;
 use std::os::raw::c_char;
 use std::rc::Rc;
@@ -64,23 +65,37 @@ fn test_transform_component() -> u64 {
     c1
 }
 
-fn test_serialize(entity_uuid: u64) { 
+fn test_serialize_yaml(entity_uuid: u64) { 
     // serialize
     let output_path = "../bin/test.yaml";
     let curdir = current_dir().unwrap();
     let yaml_path = curdir.as_path().join(output_path);
     let yaml_path = yaml_path.as_path().to_str().unwrap();
-    println!("serialize to {}", yaml_path);
+    println!("serialize yaml to {}", yaml_path);
     let output_path_c = convert_c_str(output_path);
     Entity_serialize_yaml(entity_uuid, output_path_c);
-    drop_c_str(output_path_c);
     // deserialize
-    let yaml_str = fs::read_to_string(yaml_path).unwrap();
-    let e = Entity::pinned();
-    load_from_yaml(e.borrow_mut().deref_mut(), &yaml_str);
-    let entity = e.borrow();
-    let c = entity.children.first().unwrap();
-    println!("deserialize done {}/{}", Rc::strong_count(c), Rc::weak_count(c));
+    let e = Entity_new();
+    Entity_deserialize_yaml(e, output_path_c);
+    Entity_destroy(e);
+    println!("deserialize yaml done");
+    drop_c_str(output_path_c);
+}
+fn test_serialize_binary(entity_uuid: u64) { 
+    // serialize
+    let output_path = "../bin/test.bin";
+    let curdir = current_dir().unwrap();
+    let yaml_path = curdir.as_path().join(output_path);
+    let yaml_path = yaml_path.as_path().to_str().unwrap();
+    println!("serialize binary to {}", yaml_path);
+    let output_path_c = convert_c_str(output_path);
+    Entity_serialize_binary(entity_uuid, output_path_c);
+    // deserialize
+    let e = Entity_new();
+    Entity_deserialize_binary(e, output_path_c);
+    Entity_destroy(e);
+    println!("deserialize binary done");
+    drop_c_str(output_path_c);
 }
 pub fn cstr_to_str(c_buf: *const c_char) -> &'static str {
     unsafe {
@@ -113,7 +128,8 @@ fn main() {
     let entity = test_transform_component();
 
     println!("test serialize");
-    test_serialize(entity);
+    test_serialize_yaml(entity);
+    test_serialize_binary(entity);
 
     println!("test cleanup");
     Entity_destroy(entity);

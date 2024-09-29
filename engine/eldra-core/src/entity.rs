@@ -1,4 +1,6 @@
 use std::io::BufWriter;
+use std::io::BufReader;
+use std::ops::DerefMut;
 use std::os::raw::c_char;
 use std::ffi::CStr;
 use std::any::{Any, TypeId};
@@ -9,6 +11,7 @@ use std::ptr::{addr_of};
 use std::rc::{Rc, Weak};
 use std::marker::PhantomPinned;
 use std::any::type_name;
+use std::fs;
 use std::fs::File;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -343,8 +346,16 @@ fn Entity_serialize_binary(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
         let file = File::create(p).unwrap();
-        let mut writer = BufWriter::new(file);
-        entity.borrow().serialize_binary(&mut writer);
+        entity.borrow().serialize_binary(&mut BufWriter::new(file));
+    });
+}
+#[no_mangle]
+pub extern "C"
+fn Entity_deserialize_binary(addr: u64, path: *const c_char) {
+    entity_update(&addr, |entity| {      
+        let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
+        let file = File::create(p).unwrap();
+        entity.borrow_mut().deserialize_binary(&mut BufReader::new(file)); 
     });
 }
 #[no_mangle]
@@ -353,7 +364,16 @@ fn Entity_serialize_yaml(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
         let file = File::create(p).unwrap();
-        let mut writer = BufWriter::new(file);
-        entity.borrow().serialize_yaml(&mut writer, String::new());
+        entity.borrow().serialize_yaml(&mut BufWriter::new(file), String::new());
+    });
+}
+#[no_mangle]
+pub extern "C"
+fn Entity_deserialize_yaml(addr: u64, path: *const c_char) {
+    entity_update(&addr, |entity| {      
+        let yaml_path = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
+        let yaml_str = fs::read_to_string(yaml_path).unwrap();
+        let mut e = entity.borrow_mut();
+        load_from_yaml(e.deref_mut(), &yaml_str);
     });
 }

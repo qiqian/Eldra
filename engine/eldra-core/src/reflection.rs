@@ -391,7 +391,7 @@ impl_map_ptr_serialize!(TypeId, Box, Component, real_type_id);
 impl_map_ptr_serialize!(TypeId, Rc, Component, real_type_id);
 impl_map_ptr_serialize!(TypeId, Arc, Component, real_type_id);
 // yaml loader
-pub fn load_from_yaml(root: &mut dyn Serializable, data: &String) {
+pub(crate) fn load_from_yaml(root: &mut dyn Serializable, data: &String) {
     let docs = YamlLoader::load_from_str(data.as_ref()).unwrap();
     let doc = &docs[0];
     root.deserialize_yaml(doc);
