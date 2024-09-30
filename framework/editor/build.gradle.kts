@@ -4,11 +4,15 @@ plugins {
     alias(libs.plugins.undercouchDownload) apply false
 }
 
-repositories {
-    mavenCentral()
-}
-
 kotlin {
+    mingwX64("native") { // on macOS
+        // linuxX64("native") // on Linux
+        // mingwX64("native") // on Windows
+        binaries {
+            executable()
+        }
+    }
+
     wasmWasi {
         nodejs()
         binaries.executable()
