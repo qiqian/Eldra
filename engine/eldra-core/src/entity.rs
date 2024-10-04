@@ -116,7 +116,6 @@ impl Components {
 #[uuid="1d9f39bc-ed1b-4868-8475-67b8d3caf88c"]
 pub struct Entity
 {
-    #[serialize]
     pub base: BaseObject,
     
     #[display="Name"]
@@ -379,7 +378,7 @@ fn Entity_serialize_yaml(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
         let mut file = BufWriter::new(File::create(p).unwrap());
-        entity.borrow().serialize_yaml(&mut file, String::new());
+        entity.borrow().serialize_text(&mut file, String::new());
         let _ = file.flush();
     });
 }

@@ -11,9 +11,12 @@ crate-type = ["cdylib", "lib", "staticlib"]
 eldra-macro = { path = "../eldra-macro" }
 nalgebra = "0.32.6"
 fyrox-math = "0.2.0"
-once_cell = "1.19.0"
+once_cell = "1.20.1"
 lazy_static = "1.5.0"
 yaml-rust2 = "0.9.0"
+gltf-json = "1.4.1"
+gltf = { version = "1.4.1", features = ["KHR_materials_pbrSpecularGlossiness"] }
+base64 = "0.22.1"
 
 [dependencies.uuid]
 version = "1.10.0"

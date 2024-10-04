@@ -11,7 +11,6 @@ use crate::reflection::{*};
 #[uuid="bd122d2f-cc3e-4d99-8bf2-ba1b23015e46"]
 pub struct TransformComponent
 {
-    #[serialize]
     pub base: BaseObject,
 
     #[display="Local Matrix"]

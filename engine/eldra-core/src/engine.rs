@@ -6,12 +6,14 @@ use once_cell::sync::OnceCell;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::rc::Rc;
+use crate::data::init_resource_mgr;
 use crate::reflection::init_reflection;
 
 pub fn engine_init(drop_callback: ObjDropCallback) {
     unsafe {
         engine_init_once__(drop_callback);
         init_reflection();
+        init_resource_mgr();
     }
 }
 
