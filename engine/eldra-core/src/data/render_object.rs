@@ -91,7 +91,6 @@ impl ComponentType {
             gltf_json::accessor::ComponentType::U16 => { *self = ComponentType::U16; },
             gltf_json::accessor::ComponentType::U32 => { *self = ComponentType::U32; },
             gltf_json::accessor::ComponentType::F32 => { *self = ComponentType::F32; },
-            _ => panic!("invalid enum value for BufferType"),
         }
     }
 }
@@ -454,7 +453,7 @@ impl RenderObject {
                     let _ = io.write(r#"
         {{"#.as_bytes());
                     match prim.indice.as_ref() {
-                        Some(view) => {
+                        Some(_view) => {
                             let _ = io.write(format!(r#"
             "indices": {},
             "mode": {},
@@ -465,7 +464,7 @@ impl RenderObject {
                         None => {},
                     }
                     for info in prim.vertex_iter() {
-                        let view = info.buffer_view;
+                        let _view = info.buffer_view;
                         let _ = io.write(format!(r#"
                 "{}": {},"#, info.attr_name, view_index).as_bytes());
                         view_index += 1;
@@ -536,7 +535,6 @@ impl RenderObject {
                         Semantic::TexCoords(i) => { texcoord_map.insert(i, fn_view_from_accessor(accessor, false)); },
                         Semantic::Joints(i) => { joint_map.insert(i, fn_view_from_accessor(accessor, false)); },
                         Semantic::Weights(i) => { weight_map.insert(i, fn_view_from_accessor(accessor, false)); },
-                        _ => {},
                     }
                 }
                 // sort vectors

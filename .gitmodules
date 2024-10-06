@@ -7,3 +7,9 @@
 [submodule "submodule/mimalloc"]
 	path = submodule/mimalloc
 	url = https://github.com/microsoft/mimalloc.git
+[submodule "submodule/imgui"]
+	path = submodule/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "submodule/wgpu-native"]
+	path = submodule/wgpu-native
+	url = https://github.com/gfx-rs/wgpu-native.git

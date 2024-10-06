@@ -34,7 +34,6 @@ pub fn res_mgr() -> &'static ResourceMgr {
 }
 pub unsafe fn init_resource_mgr() {
     RESOURCE_MGR.get_or_init (|| { ResourceMgr::default() });
-    let x = vec![1.1];
 }
 pub trait ExtSerializable<T> where T : Serializable + Sized {
     fn text_ext() -> &'static str { "yaml" }
