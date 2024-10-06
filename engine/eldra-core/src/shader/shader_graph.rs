@@ -12,7 +12,7 @@ use yaml_rust2::{Yaml, YamlLoader};
 use crate::{impl_map_concrete_serialize, impl_vec_concrete_serialize, impl_vec_embed_serialize};
 use crate::entity::{Component, DummyComponent};
 use crate::reflection::Serializable;
-use crate::shader::{ShaderDefaultValue, ShaderVar};
+use crate::shader::{*};
 
 #[derive(Default,Reflection)]
 struct InputPin
@@ -20,9 +20,10 @@ struct InputPin
     #[serialize]
     id: u32,
 
-    var_type: ShaderVar,
     #[serialize]
-    def_val: ShaderDefaultValue,
+    display_name: String,
+
+    var_type: ShaderVar,
 
     pub parent: Weak<RefCell<ShaderNode>>,
     pub from: Weak<RefCell<OutputPin>>,

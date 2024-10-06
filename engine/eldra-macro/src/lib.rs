@@ -1,5 +1,8 @@
 extern crate core;
 use proc_macro::{TokenStream};
+use std::any::{Any, TypeId};
+use std::fmt::Pointer;
+use std::ops::Deref;
 use quote::{*};
 use syn::{*};
 use syn::punctuated::Punctuated;
@@ -201,60 +204,118 @@ fn gen_struct_reflection(fields: &Punctuated<Field, Comma>, ast: &DeriveInput) -
     gen_token
 }
 
+fn extract_type_string(ty: &Type) -> String {
+    let mut type_path: Vec<String> = match ty {
+        syn::Type::Path(path) => {
+            path.into_token_stream().into_iter().filter_map(|e| {
+                let out = e.to_string();
+
+                if out == "<" || out == ">" {
+                    return None;
+                } else {
+                    return Some(out);
+                }
+            }).collect()
+        },
+        _ => panic!("Type '{}' has no path", ty.to_token_stream())
+    };
+    type_path.last().unwrap().clone()
+}
 fn gen_enum_reflection(variants: &Punctuated<Variant, Comma>, ast: &DeriveInput) -> TokenStream {
     let name = &ast.ident;
 
+    let mut gen_to_i32 = true;
     let mut to_i32 = quote! {};
     let mut to_string = quote! {};
     let mut yaml_serializer = quote! {};
-    let mut yaml_deerializer = quote! {};
+    let mut yaml_deserializer = quote! {};
     let mut binary_serializer = quote! {};
-    let mut binary_deerializer = quote! {};
+    let mut binary_deserializer = quote! {};
+    let mut index = 0u16;
     for v in variants.iter() {
+        if !v.fields.is_empty() {
+            gen_to_i32 = false;
+            if v.fields.len() > 1 {
+                panic!("Enum with more than 1 field can't generate reflection");
+            }
+        }
+        let val_opt = v.discriminant.clone();
+        if val_opt.is_none() {
+            gen_to_i32 = false;
+        }
         let id = &v.ident;
         let id_str = id.to_string();
-        let val = &v.discriminant.clone().unwrap().1;
-        to_i32.extend(quote! {
-            #name::#id => #val,
-        });
-        binary_serializer.extend(quote! {
-            #name::#id => { (#val as u16).serialize_binary(io); },
-        });
-        binary_deerializer.extend(quote! {
-            #val => { *self = #name::#id; },
-        });
-        to_string.extend(quote! {
-            #name::#id => #id_str.to_string(),
-        });
-        yaml_serializer.extend(quote! {
-            #name::#id => { #id_str.to_string().serialize_text(io, indent.clone()); },
-        });
-        yaml_deerializer.extend(quote! {
-            #id_str => { *self = #name::#id; },
-        });
+        if gen_to_i32 {
+            let val = &val_opt.unwrap().1;
+            to_i32.extend(quote! {
+                #name::#id => #val,
+            });
+        }
+        if v.fields.is_empty() {
+            // enum with no field
+            to_string.extend(quote! {
+                #name::#id => #id_str.to_string(),
+            });
+            binary_serializer.extend(quote! {
+                #name::#id => { #index.serialize_binary(io); },
+            });
+            binary_deserializer.extend(quote! {
+                #index => { *self = #name::#id; },
+            });
+            let yaml = format!("{{ enum: \"{}\" }}", id_str);
+            yaml_serializer.extend(quote! {
+                #name::#id => { #yaml.to_string().serialize_text(io, indent.clone()); },
+            });
+            yaml_deserializer.extend(quote! {
+                #id_str => { *self = #name::#id; },
+            });
+        } else {
+            let f;
+            match v.fields {
+                Fields::Unnamed(ref fields) => { f = fields.unnamed.iter().next().unwrap(); },
+                _ => panic!("Enum with named field can't generate reflection")
+            }
+            let field_type = &f.ty.clone();
+            // enum with 1 field
+            to_string.extend(quote! {
+                #name::#id(v) => #id_str.to_string() + "(" + &v.to_string() + ")",
+            });
+            binary_serializer.extend(quote! {
+                #name::#id(v) => {
+                    #index.serialize_binary(io);
+                    v.serialize_binary(io);
+                },
+            });
+            binary_deserializer.extend(quote! {
+                #index => {
+                    let mut v = #field_type ::default();
+                    v.deserialize_binary(io);
+                    *self = #name::#id(v);
+                },
+            });
+            let field_type_str = extract_type_string(field_type);
+            let yaml = if field_type_str == "String"
+                { format!("{{{{ enum: \"{}\", val: \"{{}}\" }}}}", id_str) } else
+                { format!("{{{{ enum: \"{}\", val: {{}} }}}}", id_str) };
+            //println!("YAML {}/{:?}", field_type_str, yaml);
+            yaml_serializer.extend(quote! {
+                #name::#id(v) => { format!(#yaml, v).serialize_text(io, indent.clone()); },
+            });
+            yaml_deserializer.extend(quote! {
+                #id_str => {
+                    let mut v = #field_type ::default();
+                    v.deserialize_text(&yaml["val"]);
+                    *self = #name::#id(v);
+                },
+            });
+        }
+        index += 1;
     }
-    let my_token = quote! {
+    let mut my_token = quote! {
         impl #name {
             fn to_string(&self) -> String {
                 match self {
                     #to_string
-                }
-            }
-            fn decode_string(&mut self, val: &String) {
-                match val.as_ref() {
-                    #yaml_deerializer
-                    _ => panic!("invalid enum value"),
-                }
-            }
-            fn to_i32(&self) -> i32 {
-                match self {
-                    #to_i32
-                }
-            }
-            fn decode_i32(&mut self, val: i32) {
-                match val {
-                    #binary_deerializer
-                    _ => panic!("invalid enum value"),
                 }
             }
         }
@@ -275,8 +336,8 @@ fn gen_enum_reflection(variants: &Punctuated<Variant, Comma>, ast: &DeriveInput)
                 let mut val: u16 = 0;
                 val.deserialize_binary(io);
                 match val {
-                    #binary_deerializer
-                    _ => panic!("invalid enum value"),
+                    #binary_deserializer
+                    _ => { panic!("invalid enum value, please regenerate binary data"); }
                 }
             }
             fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
@@ -286,14 +347,25 @@ fn gen_enum_reflection(variants: &Punctuated<Variant, Comma>, ast: &DeriveInput)
             }
             fn deserialize_text(&mut self, yaml: &yaml_rust2::Yaml) {
                 let mut val = String::new();
-                val.deserialize_text(yaml);
+                val.deserialize_text(&yaml["enum"]);
                 match val.as_ref() {
-                    #yaml_deerializer
-                    _ => panic!("invalid enum value"),
+                    #yaml_deserializer
+                    _ => { panic!("invalid enum value, enum type changed ?"); }
                 }
             }
         }
     };
+    if gen_to_i32 {
+        my_token.extend(quote! {
+            impl #name {
+                fn to_i32(&self) -> i32 {
+                    match self {
+                        #to_i32
+                    }
+                }
+            }
+        })
+    }
     TokenStream::from(my_token)
 }
 

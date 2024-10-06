@@ -9,6 +9,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use nalgebra::{*};
 use std::env::current_dir;
+use uuid::Uuid;
 
 fn test_entity_create() {
     let parent = Entity_new();
@@ -115,6 +116,8 @@ pub(crate) fn drop_c_str(c_str: *mut c_char) {
 
 #[test]
 fn main() {
+    println!("New uuid : {}", Uuid::new_v4());
+
     engine_init(entity_drop_callback);
 
     println!("test entity");
@@ -129,4 +132,6 @@ fn main() {
 
     println!("test cleanup");
     Entity_destroy(entity);
+
+    println!("New uuid : {}", Uuid::new_v4());
 }

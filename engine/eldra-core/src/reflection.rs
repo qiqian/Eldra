@@ -7,7 +7,7 @@ use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
-use nalgebra::{ArrayStorage, Dim, Matrix, RawStorageMut, Vector2, Vector3, Vector4, U1, U3};
+use nalgebra::{ArrayStorage, Dim, Matrix, Matrix2, Matrix3, Matrix4, RawStorageMut, Vector2, Vector3, Vector4, U1, U3};
 use once_cell::sync::OnceCell;
 use uuid::Uuid;
 use yaml_rust2::{Yaml, YamlLoader};
@@ -43,6 +43,14 @@ pub unsafe fn init_reflection() {
     register_serializable_type!(reg, RenderComponent);
     register_shader_graph_components(reg);
 }
+
+// common types
+pub type Vec2f = Vector2<f32>;
+pub type Vec3f = Vector3<f32>;
+pub type Vec4f = Vector4<f32>;
+pub type Mat2f = Matrix2<f32>;
+pub type Mat3f = Matrix3<f32>;
+pub type Mat4f = Matrix4<f32>;
 
 #[derive(Default)]
 struct DynNewReg {
@@ -398,9 +406,6 @@ impl_vec_embed_serialize!(i32);
 impl_vec_embed_serialize!(i64);
 impl_vec_embed_serialize!(f32);
 impl_vec_embed_serialize!(f64);
-pub type Vec2f = Vector2<f32>;
-pub type Vec3f = Vector3<f32>;
-pub type Vec4f = Vector4<f32>;
 impl_vec_embed_serialize!(Vec2f);
 impl_vec_embed_serialize!(Vec3f);
 impl_vec_embed_serialize!(Vec4f);

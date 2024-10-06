@@ -3,6 +3,7 @@ use nalgebra::{Matrix2, Matrix3, Matrix4, Vector2, Vector3, Vector4};
 use uuid::Uuid;
 use eldra_macro::Reflection;
 use crate::entity::Component;
+use crate::reflection::{*};
 
 pub mod shader_graph;
 
@@ -10,41 +11,31 @@ pub fn register_shader_graph_components(reg: &mut HashMap<Uuid, fn()->Box<dyn Co
 
 }
 
-#[derive(Default)]
+#[derive(Default,Reflection)]
 enum ShaderVar {
     #[default]
     UNKNOWN,
     INT(i32),
     FLOAT(f32),
-    RGB(Vector3<f32>),
-    RGBA(Vector3<f32>),
-    VEC2(Vector2<f32>),
-    VEC3(Vector3<f32>),
-    VEC4(Vector4<f32>),
-    MAT2(Matrix2<f32>),
-    MAT3(Matrix3<f32>),
-    MAT4(Matrix4<f32>),
+    RGB(Vec3f),
+    RGBA(Vec4f),
+    VEC2(Vec2f),
+    VEC3(Vec3f),
+    VEC4(Vec4f),
+    MAT2(Mat2f),
+    MAT3(Mat3f),
+    MAT4(Mat4f),
     TEXTURE(String),
 }
 
-#[derive(Default,Reflection)]
-enum ShaderDefaultValue {
-    #[default]
-    NONE = 0,
+enum ColorSpace {
+    RGB,
+    SRGB,
+    TANGENT,
+}
 
-    // engine
-    CAMERA_DIR = 1,
-    TIME_DELTA = 2,
-
-    // shader stage
-    VERTEX_UV0 = 100,
-    VERTEX_UV1 = 101,
-    VERTEX_COLOR0 = 102,
-    VERTEX_COLOR1 = 103,
-
-    // pipeline texture
-    PIPELINE_SCENE_COLOR = 300,
-    PIPELINE_DEPTH = 301,
-    PIPELINE_SCREEN_UV = 302,
-
+enum SampleMode {
+    WRAP,
+    MIRROR,
+    CLAMP,
 }
