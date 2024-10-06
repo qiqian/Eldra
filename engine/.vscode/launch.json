@@ -22,6 +22,9 @@
           "cwd": "${workspaceFolder}/eldra-core",
           "stopOnEntry": false,
           "preLaunchTask": "build",
+          "env": {
+            "RUST_BACKTRACE":"1",
+          },
         },
     ]
 }

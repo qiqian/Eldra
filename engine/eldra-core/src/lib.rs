@@ -3,4 +3,4 @@ pub mod entity;
 pub mod data;
 pub mod comp;
 pub mod reflection;
-pub mod fs;
+pub mod shader;

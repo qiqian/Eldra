@@ -1,6 +1,4 @@
-use std::io::BufWriter;
-use std::io::BufReader;
-use std::io::Write;
+use std::io::{BufWriter,BufReader,Read,Write};
 use std::ops::DerefMut;
 use std::os::raw::c_char;
 use std::ffi::CStr;
@@ -16,10 +14,12 @@ use std::fs;
 use std::fs::File;
 use std::str::FromStr;
 use uuid::Uuid;
-use eldra_macro::{DropNotify, Reflection};
+use yaml_rust2::Yaml;
+use eldra_macro::{ComponentAttr, DropNotify, Reflection};
 use crate::engine::{*};
 use crate::reflection::{*};
 use crate::comp::transform_component::TransformComponent;
+use crate::impl_vec_concrete_serialize;
 
 #[derive(Debug,Reflection)]
 pub struct BaseObject
@@ -41,8 +41,16 @@ pub trait ComponentAttr {
     fn is_comp_uniq(&self) -> bool;
 }
 pub trait Component : Reflectable + ComponentAttr + Serializable {
-    fn tick(&mut self, delta: f32, ancestor: &Option<&Components>);
+    fn tick(&mut self, _delta: f32, _ancestor: &Option<&Components>) {
+    }
 }
+#[derive(Default,Reflection,ComponentAttr)]
+pub struct DummyComponent {
+    #[serialize]
+    dummy:u8,
+}
+impl Component for DummyComponent {}
+impl Uniq for DummyComponent {}
 #[derive(Default,Reflection)]
 pub struct Components
 {
@@ -143,6 +151,8 @@ pub struct Entity
     #[serialize]
     components: Components,
 }
+impl_vec_concrete_serialize!(Rc, RefCell, Entity, new, borrow, borrow_mut);
+
 impl Entity {
     // caller should decide to whether engine_pin or root_entity.add_child for this new entity
     pub fn pinned() -> Rc<RefCell<Entity>> {
@@ -377,9 +387,8 @@ pub extern "C"
 fn Entity_serialize_yaml(addr: u64, path: *const c_char) {
     entity_update(&addr, |entity| {
         let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap();
-        let mut file = BufWriter::new(File::create(p).unwrap());
+        let mut file = SerializeTextWriter::new(p);
         entity.borrow().serialize_text(&mut file, String::new());
-        let _ = file.flush();
     });
 }
 #[no_mangle]

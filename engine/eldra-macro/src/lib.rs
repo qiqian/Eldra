@@ -7,6 +7,7 @@ use syn::token::Comma;
 
 #[derive(Clone)]
 struct VarInfo<'a> {
+    display: proc_macro2::TokenStream,
     serialize : bool,
     readonly : bool,
     field : &'a Field,
@@ -21,8 +22,10 @@ fn gen_reflect_info<'a>(struct_name: &Ident, vars: &Vec<VarInfo<'a>>) -> proc_ma
         let field_type = var.field.ty.clone().into_token_stream();
         let serialize = var.serialize;
         let readonly = var.readonly;
+        let display = var.display.clone();
         reflected.extend(quote! {
                             v.push(crate::reflection::ReflectVarInfo {
+                                display: #display,
                                 serialize : #serialize,
                                 readonly : #readonly,
                                 offset : std::mem::offset_of!(#struct_name, #field_name) as u32,
@@ -43,18 +46,19 @@ fn gen_yaml_serilizer<'a>(vars: &Vec<VarInfo<'a>>) -> proc_macro2::TokenStream {
         reflected.extend(quote! {
             let _ = io.write_all(format!(#field_mark, indent.clone()).as_bytes());
         });
-        let field_type = format!("{{}}field_type : \"{}\"\n",
+        let field_type = format!("{{}}field_type : \"{}\"",
              var.field.ty.clone().to_token_stream().to_string().replace(" ", ""));
         reflected.extend(quote! {
             let _ = io.write_all(format!(#field_type, indent.clone() + "  ").as_bytes());
+            io.newline();
         });
         reflected.extend(quote! {
             let _ = io.write_all(format!("{}value : ", indent.clone() + "  ").as_bytes());
             if self.#field_tag.is_multi_line() {
-                let _ = io.write_all("\n".as_bytes());
+                io.newline();
             }
             self.#field_tag.serialize_text(io, indent.clone() + "    ");
-            let _ = io.write_all("\n".as_bytes());
+            io.newline();
         });
     }
     reflected
@@ -134,7 +138,7 @@ fn gen_struct_reflection(fields: &Punctuated<Field, Comma>, ast: &DeriveInput) -
     let mut vars = vec!();
     let mut has_serializable_fields = false;
     for f in fields.iter() {
-        let mut var = VarInfo { serialize: false, readonly: false, field:f };
+        let mut var = VarInfo { display: quote! { "" }, serialize: false, readonly: false, field:f };
         for attr in f.attrs.iter() {
             if attr.path().is_ident("serialize") {
                 var.serialize = true;
@@ -142,6 +146,10 @@ fn gen_struct_reflection(fields: &Punctuated<Field, Comma>, ast: &DeriveInput) -
             }
             else if attr.path().is_ident("readonly") {
                 var.readonly = true;
+            }
+            else if attr.path().is_ident("display") {
+                let display_name = attr.meta.require_name_value().unwrap().value.clone();
+                var.display = quote! { #display_name };
             }
         }
         let serialize = var.serialize;
@@ -176,7 +184,7 @@ fn gen_struct_reflection(fields: &Punctuated<Field, Comma>, ast: &DeriveInput) -
                 fn deserialize_binary(&mut self, io: &mut dyn std::io::Read) {
                     #binary_deerializer
                 }
-                fn serialize_text(&self, io: &mut dyn std::io::Write, indent: String) {
+                fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
                     #yaml_serializer
                 }
                 fn deserialize_text(&mut self, yaml: &yaml_rust2::Yaml) {
@@ -210,7 +218,7 @@ fn gen_enum_reflection(variants: &Punctuated<Variant, Comma>, ast: &DeriveInput)
             #name::#id => #val,
         });
         binary_serializer.extend(quote! {
-            #name::#id => { (#val as u8).serialize_binary(io); },
+            #name::#id => { (#val as u16).serialize_binary(io); },
         });
         binary_deerializer.extend(quote! {
             #val => { *self = #name::#id; },
@@ -251,7 +259,7 @@ fn gen_enum_reflection(variants: &Punctuated<Variant, Comma>, ast: &DeriveInput)
             }
         }
         impl std::fmt::Display for #name {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.to_string())
             }
         }
@@ -264,14 +272,14 @@ fn gen_enum_reflection(variants: &Punctuated<Variant, Comma>, ast: &DeriveInput)
                 }
             }
             fn deserialize_binary(&mut self, io: &mut dyn std::io::Read) {
-                let mut val: u8 = 0;
+                let mut val: u16 = 0;
                 val.deserialize_binary(io);
                 match val {
                     #binary_deerializer
                     _ => panic!("invalid enum value"),
                 }
             }
-            fn serialize_text(&self, io: &mut dyn std::io::Write, indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
                 match self {
                     #yaml_serializer
                 }

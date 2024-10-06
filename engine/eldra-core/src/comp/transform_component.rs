@@ -3,7 +3,7 @@ use std::any::{Any, TypeId};
 use std::str::FromStr;
 use nalgebra::{*};
 use eldra_macro::{*};
-use crate::decode_component;
+use crate::{decode_component, impl_serializable_dyn_type};
 use crate::entity::{*};
 use crate::reflection::{*};
 
@@ -22,6 +22,7 @@ pub struct TransformComponent
     #[readonly]
     pub world_matrix: Matrix4<f32>,
 }
+impl_serializable_dyn_type!(TransformComponent, Component);
 
 impl Default for TransformComponent {
     fn default() -> TransformComponent {
@@ -46,9 +47,7 @@ impl TransformComponent {
         self.local_matrix.append_nonuniform_scaling_mut(scale);
     }
 }
-impl Uniq for TransformComponent {
-    fn is_uniq() -> bool { true }
-}
+impl Uniq for TransformComponent {}
 impl Component for TransformComponent {
     fn tick(&mut self, _delta: f32, ancestor: &Option<&Components>) {
         if ancestor.is_none() {

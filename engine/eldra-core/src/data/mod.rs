@@ -63,7 +63,7 @@ macro_rules! impl_ext_ref {
                 self.path.deserialize_binary(io);
                 self.value = self.load_ext_res(true, &res_mgr().$t);
             }
-            fn serialize_text(&self, io: &mut dyn Write, indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
                 self.path.serialize_text(io, indent.clone());
             }
             fn deserialize_text(&mut self, yaml: &Yaml) {

@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 use std::fs::File;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{Read, Write, BufReader};
+use std::io::{Read, Write, BufReader, BufWriter};
 use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -18,12 +18,15 @@ use crate::comp::transform_component::TransformComponent;
 use crate::data::material::Material;
 use crate::data::render_object::{BufferView, Primitive, RenderObject, SkinDataVec4};
 use crate::entity::{Component, Entity};
+use crate::shader::register_shader_graph_components;
 
+#[macro_export]
 macro_rules! register_serializable_type {
     ( $x:ident,$y:ident ) => {
         $x.insert($y::type_uuid().unwrap(), $y::dyn_box);
     }
 }
+#[macro_export]
 macro_rules! impl_serializable_dyn_type {
     ( $x:ident,$y:ident ) => {
         impl $x {
@@ -32,14 +35,13 @@ macro_rules! impl_serializable_dyn_type {
     }
 }
 
-impl_serializable_dyn_type!(TransformComponent, Component);
-impl_serializable_dyn_type!(RenderComponent, Component);
 pub unsafe fn init_reflection() {
     DYN_NEW_REG.get_or_init (|| { DynNewReg::default() });
 
     let reg = &mut DYN_NEW_REG.get_mut().unwrap_unchecked().Component;
     register_serializable_type!(reg, TransformComponent);
     register_serializable_type!(reg, RenderComponent);
+    register_shader_graph_components(reg);
 }
 
 #[derive(Default)]
@@ -50,6 +52,7 @@ static mut DYN_NEW_REG : OnceCell<DynNewReg> = OnceCell::new();
 #[derive(Debug,Default)]
 pub struct ReflectVarInfo
 {
+    pub display: &'static str,
     pub serialize : bool,
     pub readonly : bool,
     pub offset : u32,
@@ -59,18 +62,48 @@ pub trait Reflectable {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn real_type_id(&self) -> TypeId;
+    // used for UI
     fn reflect_info(&self) -> Vec<ReflectVarInfo>;
 }
 pub trait Serializable {
     fn is_multi_line(&self) -> bool;
+    // used for dyn trait serialization
     fn get_type_uuid(&self) -> Option<uuid::Uuid>;
     fn serialize_binary(&self, io: &mut dyn Write);
     fn deserialize_binary(&mut self, io: &mut dyn Read);
-    fn serialize_text(&self, io: &mut dyn Write, indent: String);
+    fn serialize_text(&self, io: &mut SerializeTextWriter, indent: String);
     fn deserialize_text(&mut self, yaml: &Yaml);
 }
+pub struct SerializeTextWriter {
+    writer: BufWriter<File>,
+    newline: bool,
+}
+impl SerializeTextWriter {
+    pub fn new(filepath: &str) -> SerializeTextWriter {
+        let file = File::create(filepath).unwrap();
+        SerializeTextWriter {
+            writer: BufWriter::new(file),
+            newline: false,
+        }
+    }
+    pub fn write_all(&mut self, mut buf: &[u8]) -> std::io::Result<()> {
+        self.newline = false;
+        self.writer.write_all(buf)
+    }
+    pub fn newline(&mut self) {
+        if !self.newline {
+            self.newline = true;
+            let _ = self.writer.write_all("\n".as_bytes());
+        }
+    }
+}
+impl Drop for SerializeTextWriter {
+    fn drop(&mut self) {
+        let _ = self.writer.flush();
+    }
+}
 pub trait Uniq {
-    fn is_uniq() -> bool;
+    fn is_uniq() -> bool { true}
 }
 impl Serializable for bool {
     fn is_multi_line(&self) -> bool { false }
@@ -86,7 +119,7 @@ impl Serializable for bool {
         unsafe { *addr_of_mut!(*self) = d[0] == 0; };
     }
 
-    fn serialize_text(&self, io: &mut dyn Write, _indent: String) {
+    fn serialize_text(&self, io: &mut SerializeTextWriter, _indent: String) {
         let _ = io.write_all(self.to_string().as_bytes());
     }
 
@@ -113,7 +146,7 @@ macro_rules! impl_enum_serialize {
                 unsafe { *addr_of_mut!(*self) = <$x>::from_le_bytes(bytes); };
             }
 
-            fn serialize_text(&self, io: &mut dyn Write, _indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, _indent: String) {
                 let _ = io.write_all((*self as u8).to_string().as_bytes());
             }
 
@@ -143,7 +176,7 @@ macro_rules! impl_primitive_serialize {
                 unsafe { *addr_of_mut!(*self) = <$x>::from_le_bytes(bytes); };
             }
 
-            fn serialize_text(&self, io: &mut dyn Write, _indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, _indent: String) {
                 let _ = io.write_all(self.to_string().as_bytes());
             }
 
@@ -180,7 +213,7 @@ impl<T, R, C, S> Serializable for Matrix<T, R, C, S> where T: Serializable + Def
         });
     }
 
-    fn serialize_text(&self, io: &mut dyn Write, _indent: String) {
+    fn serialize_text(&self, io: &mut SerializeTextWriter, _indent: String) {
         let _ = io.write_all("[ ".as_bytes());
         for col in self.column_iter() {
             for e in col.iter() {
@@ -188,7 +221,7 @@ impl<T, R, C, S> Serializable for Matrix<T, R, C, S> where T: Serializable + Def
                 let _ = io.write_all(", ".as_bytes());
             }
         }
-        let _ = io.write_all("]\n".as_bytes());
+        let _ = io.write_all("]".as_bytes());
     }
 
     fn deserialize_text(&mut self, yaml: &Yaml) {
@@ -218,7 +251,7 @@ impl Serializable for String {
         *self = String::from_utf8(str).expect("Malformed string");
     }
 
-    fn serialize_text(&self, io: &mut dyn Write, _indent: String) {
+    fn serialize_text(&self, io: &mut SerializeTextWriter, _indent: String) {
         let _ = io.write_all(format!("\"{}\"", self).as_bytes());
     }
 
@@ -240,7 +273,7 @@ impl Serializable for Uuid {
         *self = Uuid::from_bytes(buf);
     }
 
-    fn serialize_text(&self, io: &mut dyn Write, _indent: String) {
+    fn serialize_text(&self, io: &mut SerializeTextWriter, _indent: String) {
         let _ = io.write_all(format!("\"{}\"", self.to_string()).as_bytes());
     }
 
@@ -280,11 +313,13 @@ macro_rules! impl_option_embed_serialize {
                 }
             }
 
-            fn serialize_text(&self, io: &mut dyn Write, indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
                 match self {
                     Some(v) => {
-                        let _ = io.write_all(format!("{}- array_item : \n", indent.clone()).as_bytes());
+                        let _ = io.write_all(format!("{}- array_item :", indent.clone()).as_bytes());
+                        io.newline();
                         v.serialize_text(io, indent.clone() + "  ");
+                        io.newline();
                     },
                     None => {
                         let _ = io.write_all("[]".as_bytes());
@@ -307,7 +342,7 @@ macro_rules! impl_option_embed_serialize {
 #[macro_export]
 macro_rules! impl_vec_embed_serialize {
     ( $x:ident ) => {
-        impl Serializable for Vec<$x> {
+        impl crate::reflection::Serializable for Vec<$x> {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
@@ -328,14 +363,16 @@ macro_rules! impl_vec_embed_serialize {
                 }
             }
 
-            fn serialize_text(&self, io: &mut dyn Write, indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
                 if self.is_empty() {
                     let _ = io.write_all("[]".as_bytes());
                 }
                 else {
                     for item in self.iter() {
-                        let _ = io.write_all(format!("{}- array_item : \n", indent.clone()).as_bytes());
+                        let _ = io.write_all(format!("{}- array_item :", indent.clone()).as_bytes());
+                        io.newline();
                         item.serialize_text(io, indent.clone() + "  ");
+                        io.newline();
                     }
                 }
             }
@@ -368,6 +405,53 @@ impl_vec_embed_serialize!(Vec2f);
 impl_vec_embed_serialize!(Vec3f);
 impl_vec_embed_serialize!(Vec4f);
 
+macro_rules! impl_ptr_serialize {
+    ( $x:ident,$y:ident ) => {
+        impl Serializable for $x<dyn $y> {
+            fn is_multi_line(&self) -> bool { true }
+            fn get_type_uuid(&self) -> Option<uuid::Uuid> { self.as_ref().get_type_uuid() }
+            fn serialize_binary(&self, io: &mut dyn Write) {
+                self.as_ref().get_type_uuid().unwrap().serialize_binary(io);
+                self.as_ref().serialize_binary(io);
+            }
+
+            fn deserialize_binary(&mut self, io: &mut dyn Read) {
+                let mut uuid: MaybeUninit<Uuid> = MaybeUninit::uninit();
+                let uuid_ref = unsafe { uuid.assume_init_mut() };
+                uuid_ref.deserialize_binary(io);
+
+                let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$y) };
+                let mut item = (constructor.get(uuid_ref).unwrap())();
+                item.as_mut().deserialize_binary(io);
+                *self = $x::from(item);
+            }
+
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
+                let _ = io.write_all(format!("{}type_uuid : \"{}\"", indent.clone(), self.as_ref().get_type_uuid().unwrap()).as_bytes());
+                io.newline();
+                let _ = io.write_all(format!("{}value : ", indent.clone()).as_bytes());
+                if self.is_multi_line() {
+                    io.newline();
+                }
+                self.as_ref().serialize_text(io, indent.clone() + "  ");
+                io.newline();
+            }
+
+            fn deserialize_text(&mut self, data: &Yaml) {
+                // println!("deserialize dyn array-item {:?}", data);
+                let uuid_str = data["type_uuid"].as_str().unwrap();
+                let uuid = Uuid::from_str(uuid_str).unwrap();
+                let constructor = unsafe { &(DYN_NEW_REG.get_unchecked().$y) };
+                let mut item = (constructor.get(&uuid).unwrap())();
+                item.as_mut().deserialize_text(&data["value"]);
+                *self = $x::from(item);
+            }
+        }
+    }
+}
+impl_ptr_serialize!(Box, Component);
+impl_ptr_serialize!(Rc, Component);
+impl_ptr_serialize!(Arc, Component);
 macro_rules! impl_vec_ptr_serialize {
     ( $x:ident,$y:ident ) => {
         impl Serializable for Vec<$x<dyn $y>> {
@@ -376,8 +460,8 @@ macro_rules! impl_vec_ptr_serialize {
             fn serialize_binary(&self, io: &mut dyn Write) {
                 (self.len() as i64).serialize_binary(io);
                 for v in self.iter() {
-                    v.get_type_uuid().unwrap().serialize_binary(io);
-                    v.serialize_binary(io);
+                    v.as_ref().get_type_uuid().unwrap().serialize_binary(io);
+                    v.as_ref().serialize_binary(io);
                 }
             }
 
@@ -391,21 +475,24 @@ macro_rules! impl_vec_ptr_serialize {
                 for _i in 0..len {
                     uuid_ref.deserialize_binary(io);
                     let mut item = (constructor.get(uuid_ref).unwrap())();
-                    item.deserialize_binary(io);
+                    item.as_mut().deserialize_binary(io);
                     let item_ : $x<dyn $y> = $x::from(item);
                     self.push(item_);
                 }
             }
 
-            fn serialize_text(&self, io: &mut dyn Write, indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
                 if self.is_empty() {
                     let _ = io.write_all("[]".as_bytes());
                 }
                 else {
                     for item in self.iter() {
-                        let _ = io.write_all(format!("{}- array_item : \n", indent.clone()).as_bytes());
-                        let _ = io.write_all(format!("{}  type_uuid : \"{}\"\n", indent.clone(), item.get_type_uuid().unwrap()).as_bytes());
-                        item.serialize_text(io, indent.clone() + "  ");
+                        let _ = io.write_all(format!("{}- array_item :", indent.clone()).as_bytes());
+                        io.newline();
+                        let _ = io.write_all(format!("{}  type_uuid : \"{}\"", indent.clone(), item.as_ref().get_type_uuid().unwrap()).as_bytes());
+                        io.newline();
+                        item.as_ref().serialize_text(io, indent.clone() + "  ");
+                        io.newline();
                     }
                 }
             }
@@ -419,7 +506,7 @@ macro_rules! impl_vec_ptr_serialize {
                     let uuid_str = yaml["type_uuid"].as_str().unwrap();
                     let uuid = Uuid::from_str(uuid_str).unwrap();
                     let mut item = (constructor.get(&uuid).unwrap())();
-                    item.deserialize_text(yaml);
+                    item.as_mut().deserialize_text(yaml);
                     let item_ : $x<dyn $y> = $x::from(item);
                     self.push(item_);
                 }
@@ -430,9 +517,10 @@ macro_rules! impl_vec_ptr_serialize {
 impl_vec_ptr_serialize!(Box, Component);
 impl_vec_ptr_serialize!(Rc, Component);
 impl_vec_ptr_serialize!(Arc, Component);
+#[macro_export]
 macro_rules! impl_vec_concrete_serialize {
     ( $x:ident,$c:ident,$y:ident,$cons:ident,$ref:ident,$mut:ident ) => {
-        impl Serializable for Vec<$x<$c<$y>>> {
+        impl crate::reflection::Serializable for Vec<$x<$c<$y>>> {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
@@ -453,14 +541,16 @@ macro_rules! impl_vec_concrete_serialize {
                 }
             }
 
-            fn serialize_text(&self, io: &mut dyn Write, indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
                 if self.is_empty() {
                     let _ = io.write_all("[]".as_bytes());
                 }
                 else {
                     for item in self.iter() {
-                        let _ = io.write_all(format!("{}- array_item : \n", indent.clone()).as_bytes());
+                        let _ = io.write_all(format!("{}- array_item :", indent.clone()).as_bytes());
+                        io.newline();
                         item.$ref().serialize_text(io, indent.clone() + "  ");
+                        io.newline();
                     }
                 }
             }
@@ -478,18 +568,18 @@ macro_rules! impl_vec_concrete_serialize {
         }
     }
 }
-impl_vec_concrete_serialize!(Rc, RefCell, Entity, new, borrow, borrow_mut);
 
+#[macro_export]
 macro_rules! impl_map_ptr_serialize {
-    ( $Key:ident,$C:ident,$t:ident,$key:ident ) => {
-        impl Serializable for HashMap<$Key, $C<dyn $t>> where dyn $t : Serializable {
+    ( $K:ident,$C:ident,$t:ident,$key:ident ) => {
+        impl crate::reflection::Serializable for HashMap<$K, $C<dyn $t>> where dyn $t : Serializable {
             fn is_multi_line(&self) -> bool { !self.is_empty() }
             fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
             fn serialize_binary(&self, io: &mut dyn Write) {
                 (self.len() as i64).serialize_binary(io);
                 for v in self.iter() {
-                    v.1.get_type_uuid().unwrap().serialize_binary(io);
-                    v.1.serialize_binary(io);
+                    v.1.as_ref().get_type_uuid().unwrap().serialize_binary(io);
+                    v.1.as_ref().serialize_binary(io);
                 }
             }
 
@@ -502,22 +592,25 @@ macro_rules! impl_map_ptr_serialize {
                 for _i in 0..len {
                     uuid_ref.deserialize_binary(io);
                     let mut item = (constructor.get(uuid_ref).unwrap())();
-                    item.deserialize_binary(io);
+                    item.as_mut().deserialize_binary(io);
                     let tt = item.$key();
                     let item_ : $C<dyn $t> = $C::from(item);
                     self.insert(tt, item_);
                 }
             }
 
-            fn serialize_text(&self, io: &mut dyn Write, indent: String) {
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
                 if self.is_empty() {
                     let _ = io.write_all("[]".as_bytes());
                 }
                 else {
                     for item in self.iter() {
-                        let _ = io.write_all(format!("{}- map_item : \n", indent.clone()).as_bytes());
-                        let _ = io.write_all(format!("{}  type_uuid : \"{}\"\n", indent.clone(), item.1.get_type_uuid().unwrap()).as_bytes());
-                        item.1.serialize_text(io, indent.clone() + "  ");
+                        let _ = io.write_all(format!("{}- map_item :", indent.clone()).as_bytes());
+                        io.newline();
+                        let _ = io.write_all(format!("{}  type_uuid : \"{}\"", indent.clone(), item.1.as_ref().get_type_uuid().unwrap()).as_bytes());
+                        io.newline();
+                        item.1.as_ref().serialize_text(io, indent.clone() + "  ");
+                        io.newline();
                     }
                 }
             }
@@ -529,7 +622,7 @@ macro_rules! impl_map_ptr_serialize {
                     let uuid_str = e["type_uuid"].as_str().unwrap();
                     let uuid = Uuid::from_str(uuid_str).unwrap();
                     let mut item = (constructor.get(&uuid).unwrap())();
-                    item.deserialize_text(e);
+                    item.as_mut().deserialize_text(e);
                     let tt = item.$key();
                     let item_ : $C<dyn $t> = $C::from(item);
                     self.insert(tt, item_);
@@ -541,6 +634,59 @@ macro_rules! impl_map_ptr_serialize {
 impl_map_ptr_serialize!(TypeId, Box, Component, real_type_id);
 impl_map_ptr_serialize!(TypeId, Rc, Component, real_type_id);
 impl_map_ptr_serialize!(TypeId, Arc, Component, real_type_id);
+#[macro_export]
+macro_rules! impl_map_concrete_serialize {
+    ( $K:ident,$key:ident,$x:ident,$c:ident,$y:ident,$cons:ident,$ref:ident,$mut:ident ) => {
+        impl crate::reflection::Serializable for HashMap<$K, $x<$c<$y>>> {
+            fn is_multi_line(&self) -> bool { !self.is_empty() }
+            fn get_type_uuid(&self) -> Option<uuid::Uuid> { None }
+            fn serialize_binary(&self, io: &mut dyn Write) {
+                (self.len() as i64).serialize_binary(io);
+                for v in self.iter() {
+                    v.1.$ref().serialize_binary(io);
+                }
+            }
+
+            fn deserialize_binary(&mut self, io: &mut dyn Read) {
+                let mut len: i64 = 0;
+                len.deserialize_binary(io);
+                self.reserve(len as usize);
+                for _i in 0..len {
+                    let item = $y::$cons();
+                    item.$mut().deserialize_binary(io);
+                    let tt = item.$ref().$key();
+                    self.insert(tt, item);
+                }
+            }
+
+            fn serialize_text(&self, io: &mut crate::reflection::SerializeTextWriter, indent: String) {
+                if self.is_empty() {
+                    let _ = io.write_all("[]".as_bytes());
+                }
+                else {
+                    for item in self.iter() {
+                        let _ = io.write_all(format!("{}- array_item :", indent.clone()).as_bytes());
+                        io.newline();
+                        item.1.$ref().serialize_text(io, indent.clone() + "  ");
+                        io.newline();
+                    }
+                }
+            }
+
+            fn deserialize_text(&mut self, data: &Yaml) {
+                let arr = data.as_vec().unwrap();
+                self.reserve(arr.len());
+                for yaml in arr {
+                    // println!("deserialize concrete {:?}", yaml);
+                    let item = $y::$cons();
+                    item.$mut().deserialize_text(yaml);
+                    let tt = item.$ref().$key();
+                    self.insert(tt, item);
+                }
+            }
+        }
+    }
+}
 // yaml loader
 pub(crate) fn load_from_yaml(root: &mut dyn Serializable, data: &String) {
     let docs = YamlLoader::load_from_str(data.as_ref()).unwrap();

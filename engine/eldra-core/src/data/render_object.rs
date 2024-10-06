@@ -27,6 +27,11 @@ use yaml_rust2::{Yaml, YamlLoader};
 use yaml_rust2::Yaml::Hash;
 use crate::data::render_object::BufferType::{INDEX, VERTEX};
 
+/**
+ * GLTF spec
+ * https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
+ */
+
 #[derive(Reflection,Default)]
 pub enum BufferType
 {

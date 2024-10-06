@@ -12,7 +12,7 @@ use crate::data::*;
 use crate::data::material::Material;
 use crate::data::skeleton::Skeleton;
 use crate::data::render_object::{RenderObject};
-use crate::decode_component;
+use crate::{decode_component, impl_serializable_dyn_type};
 use crate::entity::{*};
 use crate::reflection::{*};
 
@@ -26,11 +26,7 @@ pub struct RenderComponent {
     #[serialize]
     pub skeleton: ExtRes<Skeleton>,
 }
-impl Uniq for RenderComponent {
-    fn is_uniq() -> bool { true }
-}
-impl Component for RenderComponent {
-    fn tick(&mut self, _delta: f32, ancestor: &Option<&Components>) {
-        // todo ?
-    }
-}
+impl Uniq for RenderComponent {}
+impl Component for RenderComponent {}
+impl_serializable_dyn_type!(RenderComponent, Component);
+
