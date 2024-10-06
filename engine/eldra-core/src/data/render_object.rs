@@ -1,30 +1,20 @@
-use std::ptr::addr_of;
 use std::any::{Any, TypeId};
-use std::cell::{Cell, RefCell};
 use std::cmp::PartialEq;
 use std::collections::HashMap;
-use std::fmt;
-use std::fs;
-use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::ops::Deref;
-use std::str::FromStr;
-use std::rc::{Rc, Weak};
-use std::sync::RwLock;
-use gltf::{Accessor, Document, Gltf, Semantic};
+use gltf::{Accessor, Document, Semantic};
 use nalgebra::{*};
 use base64::prelude::*;
 use gltf::accessor::Dimensions;
-use gltf::buffer::Source;
 use gltf::mesh::Mode;
 use gltf_json::accessor::Type;
 use eldra_macro::{Reflection};
-use crate::data::{res_mgr, ExtRes, ExtSerializable};
+use crate::data::{ExtRes, ExtSerializable};
 use crate::data::material::Material;
 use crate::{impl_option_embed_serialize, impl_vec_embed_serialize};
 use crate::reflection::{Serializable};
-use yaml_rust2::{Yaml, YamlLoader};
-use yaml_rust2::Yaml::Hash;
+use yaml_rust2::Yaml;
 use crate::data::render_object::BufferType::{INDEX, VERTEX};
 
 /**

@@ -1,18 +1,11 @@
-use std::ptr::addr_of;
 use std::any::{Any, TypeId};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::str::FromStr;
-use std::rc::{Rc, Weak};
-use nalgebra::{*};
-use uuid::Uuid;
-use yaml_rust2::Yaml;
 use eldra_macro::{*};
-use crate::comp::transform_component::TransformComponent;
 use crate::data::*;
-use crate::data::material::Material;
 use crate::data::skeleton::Skeleton;
 use crate::data::render_object::{RenderObject};
-use crate::{decode_component, impl_serializable_dyn_type};
+use crate::impl_serializable_dyn_type;
 use crate::entity::{*};
 use crate::reflection::{*};
 

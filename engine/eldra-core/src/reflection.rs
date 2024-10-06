@@ -1,23 +1,19 @@
 use std::any::{Any, TypeId};
 use std::fs::File;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{Read, Write, BufReader, BufWriter};
+use std::io::{Read, Write, BufWriter};
 use std::ptr::addr_of_mut;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
-use nalgebra::{ArrayStorage, Dim, Matrix, Matrix2, Matrix3, Matrix4, RawStorageMut, Vector2, Vector3, Vector4, U1, U3};
+use nalgebra::{Dim, Matrix, Matrix2, Matrix3, Matrix4, RawStorageMut, Vector2, Vector3, Vector4};
 use once_cell::sync::OnceCell;
 use uuid::Uuid;
 use yaml_rust2::{Yaml, YamlLoader};
 use std::mem::MaybeUninit;
-use crate::data::*;
 use crate::comp::render_component::RenderComponent;
 use crate::comp::transform_component::TransformComponent;
-use crate::data::material::Material;
-use crate::data::render_object::{BufferView, Primitive, RenderObject, SkinDataVec4};
-use crate::entity::{Component, Entity};
+use crate::entity::Component;
 use crate::shader::register_shader_graph_components;
 
 #[macro_export]
@@ -94,7 +90,7 @@ impl SerializeTextWriter {
             newline: false,
         }
     }
-    pub fn write_all(&mut self, mut buf: &[u8]) -> std::io::Result<()> {
+    pub fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
         self.newline = false;
         self.writer.write_all(buf)
     }

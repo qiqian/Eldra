@@ -1,11 +1,6 @@
-use std::rc::Rc;
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
-use std::sync::RwLock;
-use eldra_macro::{*};
 use eldra_macro::Reflection;
-use crate::data::{res_mgr, ExtSerializable, ResourceMgr};
-use crate::data::texture::Texture;
+use crate::data::ExtSerializable;
 
 #[derive(Reflection,Default)]
 pub struct Skeleton {

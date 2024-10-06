@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use nalgebra::{Matrix2, Matrix3, Matrix4, Vector2, Vector3, Vector4};
 use uuid::Uuid;
 use eldra_macro::Reflection;
 use crate::entity::Component;
@@ -26,16 +25,22 @@ enum ShaderVar {
     MAT3(Mat3f),
     MAT4(Mat4f),
     TEXTURE(String),
+    COLORSPACE(ColorSpace),
+    SAMPLEMODE(SampleMode),
 }
 
+#[derive(Default,Reflection)]
 enum ColorSpace {
-    RGB,
-    SRGB,
-    TANGENT,
+    #[default]
+    RGB = 0,
+    SRGB = 1,
+    TANGENT = 2,
 }
 
+#[derive(Default,Reflection)]
 enum SampleMode {
-    WRAP,
-    MIRROR,
-    CLAMP,
+    #[default]
+    CLAMP = 0,
+    WRAP = 1,
+    MIRROR = 2,
 }

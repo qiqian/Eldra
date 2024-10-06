@@ -1,8 +1,5 @@
 extern crate core;
 use proc_macro::{TokenStream};
-use std::any::{Any, TypeId};
-use std::fmt::Pointer;
-use std::ops::Deref;
 use quote::{*};
 use syn::{*};
 use syn::punctuated::Punctuated;
@@ -205,7 +202,7 @@ fn gen_struct_reflection(fields: &Punctuated<Field, Comma>, ast: &DeriveInput) -
 }
 
 fn extract_type_string(ty: &Type) -> String {
-    let mut type_path: Vec<String> = match ty {
+    let type_path: Vec<String> = match ty {
         syn::Type::Path(path) => {
             path.into_token_stream().into_iter().filter_map(|e| {
                 let out = e.to_string();

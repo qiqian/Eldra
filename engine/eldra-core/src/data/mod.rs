@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::ops::Deref;
 use std::rc::Rc;
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 use once_cell::sync::OnceCell;
 use uuid::Uuid;
 use yaml_rust2::{Yaml, YamlLoader};
@@ -82,7 +82,7 @@ impl<T> ExtRes<T> {
     where T : Default + Serializable + ExtSerializable<T>
     {
         {
-            let mut resmap = resmap_rw.read().unwrap();
+            let resmap = resmap_rw.read().unwrap();
             let res_opt = resmap.get(&self.path);
             if res_opt.is_some() {
                 return res_opt.unwrap().clone()

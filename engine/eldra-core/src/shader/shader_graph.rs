@@ -3,10 +3,9 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::io::Read;
 use std::fs;
-use std::fs::File;
 use std::any::{Any, TypeId};
 use std::rc::{Rc, Weak};
-use nalgebra::{Matrix2, Matrix3, Matrix4, Vector2, Vector3, Vector4};
+use nalgebra::Vector2;
 use eldra_macro::*;
 use yaml_rust2::{Yaml, YamlLoader};
 use crate::{impl_map_concrete_serialize, impl_vec_concrete_serialize, impl_vec_embed_serialize};
@@ -23,6 +22,7 @@ struct InputPin
     #[serialize]
     display_name: String,
 
+    #[serialize]
     var_type: ShaderVar,
 
     pub parent: Weak<RefCell<ShaderNode>>,
@@ -42,6 +42,7 @@ struct OutLink
     node_id: u32,
     #[serialize]
     pin_id: u32,
+
     pin: Weak<RefCell<InputPin>>,
 }
 impl_vec_embed_serialize!(OutLink);
@@ -53,8 +54,9 @@ struct OutputPin
     id: u32,
     #[serialize]
     pub to: Vec<OutLink>,
-
+    #[serialize]
     var_type: ShaderVar,
+
     pub parent: Weak<RefCell<ShaderNode>>,
 }
 impl OutputPin {
@@ -69,7 +71,9 @@ struct ShaderNode
 {
     #[serialize]
     id: u32,
+
     myself: Weak<RefCell<ShaderNode>>,
+    
     #[serialize]
     pub pos: Vector2<f32>,
     #[serialize]
