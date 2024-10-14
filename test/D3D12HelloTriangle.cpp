@@ -26,18 +26,21 @@
 
 class AnimatedShape {
 public:
-    AnimatedShape() : x(0), y(100), radius(50), speed(2) {}
+    AnimatedShape() : x(0), y(200), radius(150), speed(2) {}
 
     void update() {
         x += speed;
-        if (x > 800) { // Reset position if out of bounds
+        if (x > 1000) { // Reset position if out of bounds
             x = 0;
         }
     }
 
-    void draw(SkCanvas* canvas) {
+    void draw(SkCanvas* canvas, sk_sp<SkShader> shader) {
         SkPaint paint;
-        paint.setColor(SK_ColorBLUE);
+        //paint.setColor(SK_ColorRED);
+        paint.setShader(shader);
+        paint.setAntiAlias(true);             // 启用抗锯齿
+        paint.setStyle(SkPaint::kStrokeAndFill_Style); // 设置绘制样式为填充
         canvas->drawCircle(x, y, radius, paint);
     }
 
@@ -224,6 +227,70 @@ void D3D12HelloTriangle::LoadPipeline()
         }
     }
 
+    {
+        // render  to texture 
+        CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
+        CD3DX12_RESOURCE_DESC textureResourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+            DXGI_FORMAT_R8G8B8A8_UNORM, // Format
+            m_width,                       // Width
+            m_height,                       // Height
+            1,                          // Array size (1 texture)
+            1,                          // Mip levels
+            1,                          // Sample count
+            0,                          // Sample quality
+            D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET); // Enable render target usage
+        D3D12_CLEAR_VALUE clearValue;
+        clearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        clearValue.Color[0] = 0.0f;
+        clearValue.Color[1] = 0.0f;
+        clearValue.Color[2] = 0.0f;
+        clearValue.Color[3] = 1.0f;  // Clear to opaque black
+        // Create the texture resource
+        
+        m_device->CreateCommittedResource(
+            &heapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &textureResourceDesc,
+            D3D12_RESOURCE_STATE_RENDER_TARGET, // Initial state for a render target
+            &clearValue,                        // Optional clear value
+            IID_PPV_ARGS(&tex_renderTargetTexture)
+        );
+
+        // Create a descriptor heap for the RTV
+        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+        rtvHeapDesc.NumDescriptors = 1; // One RTV
+        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        
+        m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&tex_rtvHeap));
+
+        // Create the RTV and store it in the descriptor heap
+        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(tex_rtvHeap->GetCPUDescriptorHandleForHeapStart());
+        m_device->CreateRenderTargetView(tex_renderTargetTexture.Get(), nullptr, rtvHandle);
+
+        GrD3DTextureResourceInfo info(nullptr,
+            nullptr,
+            D3D12_RESOURCE_STATE_PRESENT,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            1,
+            1,
+            0);
+        info.fResource.retain(tex_renderTargetTexture.Get());
+        GrBackendTexture backendTexture = GrBackendTexture(m_width, m_height, info);
+        skImage = SkImages::BorrowTextureFrom(
+            skCtx.get(),
+            backendTexture,
+            kTopLeft_GrSurfaceOrigin,
+            kRGBA_8888_SkColorType,
+            kPremul_SkAlphaType,
+            nullptr
+        );
+        skShader = skImage->makeRawShader(
+            SkTileMode::kClamp,
+            SkTileMode::kClamp,
+            SkSamplingOptions());
+    }
+
     ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)));
 }
 
@@ -331,6 +398,43 @@ void D3D12HelloTriangle::LoadAssets()
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
+    // Create the texture vertex buffer.
+    {
+        // Define the geometry for a triangle.
+        Vertex triangleVertices[] =
+        {
+            { { 0.0f, 0.25f * m_aspectRatio, 0.0f }, { 0.7f, 0.6f, 0.0f, 1.0f } },
+            { { 0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 0.8f, 0.2f, 1.0f } },
+            { { -0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.2f, 0.0f, 0.9f, 1.0f } }
+        };
+
+        const UINT vertexBufferSize = sizeof(triangleVertices);
+
+        // Note: using upload heaps to transfer static data like vert buffers is not 
+        // recommended. Every time the GPU needs it, the upload heap will be marshalled 
+        // over. Please read up on Default Heap usage. An upload heap is used here for 
+        // code simplicity and because there are very few verts to actually transfer.
+        ThrowIfFailed(m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&m_vertexBuffer2)));
+
+        // Copy the triangle data to the vertex buffer.
+        UINT8* pVertexDataBegin;
+        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        ThrowIfFailed(m_vertexBuffer2->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+        memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));
+        m_vertexBuffer2->Unmap(0, nullptr);
+
+        // Initialize the vertex buffer view.
+        m_vertexBufferView2.BufferLocation = m_vertexBuffer2->GetGPUVirtualAddress();
+        m_vertexBufferView2.StrideInBytes = sizeof(Vertex);
+        m_vertexBufferView2.SizeInBytes = vertexBufferSize;
+    }
+
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
@@ -349,39 +453,77 @@ void D3D12HelloTriangle::LoadAssets()
         WaitForPreviousFrame();
     }
 
-    // Constant buffer data (aligned to 256 bytes)
-    const UINT constantBufferSize = 256;
+    {
+        // Constant buffer data (aligned to 256 bytes)
+        const UINT constantBufferSize = 256;
 
-    // Describe the constant buffer
-    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
+        // Describe the constant buffer
+        CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+        CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
 
-    // Create the constant buffer
-    ComPtr<ID3D12Resource> constantBuffer;
-    m_device->CreateCommittedResource(
-        &heapProps,
-        D3D12_HEAP_FLAG_NONE,
-        &bufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&constantBuffer)
-    );
-    m_constantBuffer = constantBuffer;
+        // Create the constant buffer
+        ComPtr<ID3D12Resource> constantBuffer;
+        m_device->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &bufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&constantBuffer)
+        );
+        m_constantBuffer = constantBuffer;
 
-    // Describe and create a CBV descriptor heap
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = 1;
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
+        // Describe and create a CBV descriptor heap
+        D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+        heapDesc.NumDescriptors = 1;
+        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
 
-    // Describe the CBV
-    D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-    cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress();
-    cbvDesc.SizeInBytes = constantBufferSize; // Must be a multiple of 256 bytes
+        // Describe the CBV
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = constantBufferSize; // Must be a multiple of 256 bytes
 
-    // Create the CBV
-    m_device->CreateConstantBufferView(&cbvDesc, m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
+        // Create the CBV
+        m_device->CreateConstantBufferView(&cbvDesc, m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
+    }
+
+    {
+        // Constant buffer data (aligned to 256 bytes)
+        const UINT constantBufferSize = 256;
+
+        // Describe the constant buffer
+        CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+        CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
+
+        // Create the constant buffer
+        ComPtr<ID3D12Resource> constantBuffer;
+        m_device->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &bufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&constantBuffer)
+        );
+        m_constantBuffer2 = constantBuffer;
+
+        // Describe and create a CBV descriptor heap
+        D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+        heapDesc.NumDescriptors = 1;
+        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap2));
+
+        // Describe the CBV
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = constantBufferSize; // Must be a multiple of 256 bytes
+
+        // Create the CBV
+        m_device->CreateConstantBufferView(&cbvDesc, m_cbvHeap2->GetCPUDescriptorHandleForHeapStart());
+    }
 }
 
 // Update frame-based values.
@@ -392,13 +534,24 @@ void D3D12HelloTriangle::OnUpdate()
 // Render the scene.
 void D3D12HelloTriangle::OnRender()
 {
-    // Record all the commands we need to render the scene into the command list.
-    PopulateCommandList();
+    static float angle = 0;
+    angle += 0.1;
 
-    // Execute the command list.
-    ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-    m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
+    // Command list allocators can only be reset when the associated 
+    // command lists have finished execution on the GPU; apps should use 
+    // fences to determine GPU execution progress.
+    ThrowIfFailed(m_commandAllocator->Reset());
+    
+    {
+        float color[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+        PopulateCommandList(L"Render to screen", color, angle, 1, m_renderTargets[m_frameIndex], m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, 
+            D3D12_RESOURCE_STATE_PRESENT, & m_vertexBufferView, m_constantBuffer, m_cbvHeap);
+    }
+    {
+        float color[] = { 0.2f, 0.0f, 0.1f, 1.0f };
+        PopulateCommandList(L"Render to texture", color, angle, 5, tex_renderTargetTexture, tex_rtvHeap->GetCPUDescriptorHandleForHeapStart(), 0, 
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, & m_vertexBufferView2, m_constantBuffer2, m_cbvHeap2);
+    }
     {
         SkCanvas* canvas = skSurf[m_frameIndex]->getCanvas();
 
@@ -406,12 +559,15 @@ void D3D12HelloTriangle::OnRender()
 
         // Update and draw the animated shape
         shape.update();
-        shape.draw(canvas);
+        m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(tex_renderTargetTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+        shape.draw(canvas, skShader);
 
         // Flush the canvas
         skCtx->flushAndSubmit();
     }
 
+    // Indicate that the back buffer will now be used to present.
+    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
     // Present the frame.
     ThrowIfFailed(m_swapChain->Present(1, 0));
 
@@ -427,56 +583,59 @@ void D3D12HelloTriangle::OnDestroy()
     CloseHandle(m_fenceEvent);
 }
 
-void D3D12HelloTriangle::PopulateCommandList()
+void D3D12HelloTriangle::PopulateCommandList(wchar_t* name, const float clearColor[4], float angle, float scale, ComPtr<ID3D12Resource> tex, D3D12_CPU_DESCRIPTOR_HANDLE rtv, UINT rtv_idx,
+    D3D12_RESOURCE_STATES from, D3D12_VERTEX_BUFFER_VIEW* view, ComPtr<ID3D12Resource> cb, ID3D12DescriptorHeap* cbv)
 {
-    // Command list allocators can only be reset when the associated 
-    // command lists have finished execution on the GPU; apps should use 
-    // fences to determine GPU execution progress.
-    ThrowIfFailed(m_commandAllocator->Reset());
-
     // However, when ExecuteCommandList() is called on a particular command 
     // list, that command list can then be reset at any time and must be before 
     // re-recording.
     ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), m_pipelineState.Get()));
 
+    m_commandList->BeginEvent(0, name, (UINT)wcslen(name) * sizeof(wchar_t));
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
     // rotate
-    static float angle = 0;
-    angle += 0.1;
-    XMMATRIX rotationMatrix = XMMatrixRotationZ(angle);
+    struct ConstantBuffer {
+        XMMATRIX rotationMatrix;
+        float scale;
+    };
+    ConstantBuffer cbuffer;
+    cbuffer.rotationMatrix = XMMatrixRotationZ(angle);
+    cbuffer.scale = scale;
     UINT8* pCbvDataBegin = nullptr;
     CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU
-    m_constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCbvDataBegin));
-    memcpy(pCbvDataBegin, &rotationMatrix, sizeof(rotationMatrix));
-    m_constantBuffer->Unmap(0, 0);
+    cb->Map(0, &readRange, reinterpret_cast<void**>(&pCbvDataBegin));
+    memcpy(pCbvDataBegin, &cbuffer, sizeof(cbuffer));
+    cb->Unmap(0, 0);
 
     // Set the descriptor heap containing the CBV
-    m_commandList->SetDescriptorHeaps(1, &m_cbvHeap);
+    m_commandList->SetDescriptorHeaps(1, &cbv);
     // Set the constant buffer descriptor table (bind CBV to root signature)
-    m_commandList->SetGraphicsRootDescriptorTable(0, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
+    m_commandList->SetGraphicsRootDescriptorTable(0, cbv->GetGPUDescriptorHandleForHeapStart());
 
     // Set necessary state.
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
     // Indicate that the back buffer will be used as a render target.
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), from, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtv, rtv_idx, m_rtvDescriptorSize);
     m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
     // Record commands.
-    const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
     m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+    m_commandList->IASetVertexBuffers(0, 1, view);
     m_commandList->DrawInstanced(3, 1, 0, 0);
 
-    // Indicate that the back buffer will now be used to present.
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+    m_commandList->EndEvent();
 
     ThrowIfFailed(m_commandList->Close());
+
+    // Execute the command list.
+    ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+    m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 }
 
 void D3D12HelloTriangle::WaitForPreviousFrame()

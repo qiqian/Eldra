@@ -11,6 +11,7 @@
 cbuffer ConstantBuffer : register(b0)
 {
     matrix worldViewProj;
+    float scale;
 };
 struct PSInput
 {
@@ -22,7 +23,7 @@ PSInput VSMain(float4 position : POSITION, float4 color : COLOR)
 {
     PSInput result;
 
-    result.position = mul(worldViewProj, position * float4(1.9, 1.9, 1.9, 1));
+    result.position = mul(worldViewProj, position * float4(scale, scale, scale, 1));
     result.color = color;
 
     return result;

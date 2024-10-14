@@ -8,7 +8,10 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-
+#include "include/core/SkImage.h"     // For SkImage
+#include "include/core/SkPaint.h"     // For SkPaint
+#include "include/core/SkCanvas.h"    // For SkCanvas drawing
+#include "include/core/SkSurface.h"   // For SkSurface, if needed
 #include "D3D12HelloTriangle.h"
 
 _Use_decl_annotations_

@@ -12,6 +12,11 @@
 #pragma once
 
 #include "DXSample.h"
+#include "include/core/SkImage.h"     // For SkImage
+#include "include/core/SkPaint.h"     // For SkPaint
+#include "include/core/SkCanvas.h"    // For SkCanvas drawing
+#include "include/core/SkSurface.h"   // For SkSurface, if needed
+#include "include/core/SkShader.h"
 
 using namespace DirectX;
 
@@ -58,8 +63,12 @@ private:
     // App resources.
     ComPtr<ID3D12Resource> m_vertexBuffer;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+    ComPtr<ID3D12Resource> m_vertexBuffer2;
+    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView2;
     ComPtr<ID3D12Resource> m_constantBuffer;
+    ComPtr<ID3D12Resource> m_constantBuffer2;
     ID3D12DescriptorHeap* m_cbvHeap;
+    ID3D12DescriptorHeap* m_cbvHeap2;
 
     // Synchronization objects.
     UINT m_frameIndex;
@@ -67,8 +76,12 @@ private:
     ComPtr<ID3D12Fence> m_fence;
     UINT64 m_fenceValue;
 
+    sk_sp<SkImage> skImage;
+    sk_sp<SkShader> skShader;
+
     void LoadPipeline();
     void LoadAssets();
-    void PopulateCommandList();
+    void PopulateCommandList(wchar_t* name , const float clearColor[4], float angle, float scale, ComPtr<ID3D12Resource> tex, D3D12_CPU_DESCRIPTOR_HANDLE rtv, UINT rtv_idx, D3D12_RESOURCE_STATES from,
+        D3D12_VERTEX_BUFFER_VIEW* view, ComPtr<ID3D12Resource> cb, ID3D12DescriptorHeap* cbv);
     void WaitForPreviousFrame();
 };

@@ -59,6 +59,9 @@ protected:
     GrBackendTexture skTexture;
     sk_sp<SkSurface> skSurf[10];
 
+    ComPtr<ID3D12Resource> tex_renderTargetTexture;
+    ComPtr<ID3D12DescriptorHeap> tex_rtvHeap;
+
     // Viewport dimensions.
     UINT m_width;
     UINT m_height;
