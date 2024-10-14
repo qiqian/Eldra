@@ -12,20 +12,38 @@
 #include "D3D12HelloTriangle.h"
 
 // Skia
-#include <include/core/SkCanvas.h>
 #include <include/core/SkBitmap.h>
 #include <include/core/SkPaint.h>
 #include <include/core/SkTypeface.h>
 #include <include/core/SkFont.h>
-#include <include/core/SkSurface.h>
 #include <include/core/SkMaskFilter.h>
 #include <include/codec/SkCodec.h>
-#include <include/gpu/ganesh/d3d/GrD3DBackendContext.h>
-#include <include/gpu/ganesh/GrDirectContext.h>
-#include <include/gpu/ganesh/d3d/GrD3DTypes.h>
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
 
 #include "D3DAMDMemoryAllocator.h"
+class AnimatedShape {
+public:
+    AnimatedShape() : x(0), y(100), radius(50), speed(2) {}
 
+    void update() {
+        x += speed;
+        if (x > 800) { // Reset position if out of bounds
+            x = 0;
+        }
+    }
+
+    void draw(SkCanvas* canvas) {
+        SkPaint paint;
+        paint.setColor(SK_ColorBLUE);
+        canvas->drawCircle(x, y, radius, paint);
+    }
+
+private:
+    float x, y;   // Position of the circle
+    float radius; // Radius of the circle
+    float speed;  // Speed of movement
+};
+AnimatedShape shape;
 
 D3D12HelloTriangle::D3D12HelloTriangle(UINT width, UINT height, std::wstring name) :
     DXSample(width, height, name),
@@ -108,7 +126,6 @@ void D3D12HelloTriangle::LoadPipeline()
     // Custom class D3DAMDMemoryAllocator for assigning shared texture handles 
     backendContext.fMemoryAllocator = D3DAMDMemoryAllocator::Make(
         backendContext.fAdapter.get(), backendContext.fDevice.get());
-    auto fContext = GrDirectContext::MakeDirect3D(backendContext);
 
     // Describe and create the swap chain.
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
@@ -128,12 +145,30 @@ void D3D12HelloTriangle::LoadPipeline()
         nullptr,
         nullptr,
         &swapChain
-        ));
+    ));
+    ThrowIfFailed(swapChain.As(&m_swapChain));
 
     // This sample does not support fullscreen transitions.
     ThrowIfFailed(factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
 
-    ThrowIfFailed(swapChain.As(&m_swapChain));
+
+    {
+        skCtx = GrDirectContext::MakeDirect3D(backendContext);
+        auto skColorType = kRGBA_8888_SkColorType;
+        GrD3DTextureResourceInfo info(nullptr, nullptr, D3D12_RESOURCE_STATE_PRESENT, DXGI_FORMAT_R8G8B8A8_UNORM, 1, 1, 0);
+        //GrBackendTexture backendTexture(width, height, info);
+        GrBackendFormat format = skCtx->defaultBackendFormat(skColorType, GrRenderable::kYes);
+        skTexture = skCtx->createBackendTexture(m_width, m_height, format, skgpu::Mipmapped::kNo, GrRenderable::kYes);
+        GrD3DTextureResourceInfo ResourceInfo; // fResource:ID3D12Resource 
+        skTexture.getD3DTextureResourceInfo(&ResourceInfo);// 
+        skCtx->colorTypeSupportedAsSurface(skColorType);
+        //skSurf = SkSurfaces::WrapBackendTexture(
+        //    skCtx.get(), skTexture, kTopLeft_GrSurfaceOrigin, 0,
+        //    skColorType, nullptr, nullptr);
+        //skSurf = SkSurfaces::RenderTarget(skCtx.get(), skgpu::Budgeted::kYes,
+        //    SkImageInfo::MakeN32Premul(m_width, m_height));
+    }
+
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
     // Create descriptor heaps.
@@ -158,6 +193,21 @@ void D3D12HelloTriangle::LoadPipeline()
             ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
             m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);
             rtvHandle.Offset(1, m_rtvDescriptorSize);
+
+            // set up base resource info
+            GrD3DTextureResourceInfo info(nullptr,
+                nullptr,
+                D3D12_RESOURCE_STATE_PRESENT,
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                1,
+                1,
+                0);
+            info.fResource.retain(m_renderTargets[n].Get());
+            GrBackendRenderTarget backendRT(m_width, m_height, info);
+            skSurf[n] = SkSurfaces::WrapBackendRenderTarget(skCtx.get(),
+                backendRT,
+                kTopLeft_GrSurfaceOrigin,
+                kRGBA_8888_SkColorType, nullptr, nullptr);
         }
     }
 
@@ -295,6 +345,19 @@ void D3D12HelloTriangle::OnRender()
     // Execute the command list.
     ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    {
+        SkCanvas* canvas = skSurf[m_frameIndex]->getCanvas();
+
+        //canvas->clear(SK_ColorWHITE);
+
+        // Update and draw the animated shape
+        shape.update();
+        shape.draw(canvas);
+
+        // Flush the canvas
+        skCtx->flushAndSubmit();
+    }
 
     // Present the frame.
     ThrowIfFailed(m_swapChain->Present(1, 0));

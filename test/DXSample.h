@@ -14,6 +14,15 @@
 #include "DXSampleHelper.h"
 #include "Win32Application.h"
 
+#include <include/core/SkCanvas.h>
+#include "include/gpu/ganesh/SkImageGanesh.h"
+#include <include/gpu/ganesh/d3d/GrD3DBackendContext.h>
+#include <include/gpu/ganesh/GrBackendSurface.h>
+#include <include/gpu/ganesh/d3d/GrD3DTypes.h>
+#include <include\gpu\ganesh\SkSurfaceGanesh.h>
+#include <include/core/SkSurface.h>
+#include "include/gpu/ganesh/GrDirectContext.h"
+
 class DXSample
 {
 public:
@@ -45,6 +54,10 @@ protected:
         bool requestHighPerformanceAdapter = false);
 
     void SetCustomWindowText(LPCWSTR text);
+
+    sk_sp<GrDirectContext> skCtx;
+    GrBackendTexture skTexture;
+    sk_sp<SkSurface> skSurf[10];
 
     // Viewport dimensions.
     UINT m_width;
