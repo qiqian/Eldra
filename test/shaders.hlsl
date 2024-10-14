@@ -19,7 +19,7 @@ PSInput VSMain(float4 position : POSITION, float4 color : COLOR)
 {
     PSInput result;
 
-    result.position = position;
+    result.position = position * float4(1.9, 1.9, 1.9, 1);
     result.color = color;
 
     return result;
