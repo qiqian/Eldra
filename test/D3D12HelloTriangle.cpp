@@ -21,6 +21,9 @@
 #include "src/gpu/ganesh/GrDirectContextPriv.h"
 
 #include "D3DAMDMemoryAllocator.h"
+
+#include "d3dx12/d3dx12_root_signature.h"
+
 class AnimatedShape {
 public:
     AnimatedShape() : x(0), y(100), radius(50), speed(2) {}
@@ -56,6 +59,16 @@ D3D12HelloTriangle::D3D12HelloTriangle(UINT width, UINT height, std::wstring nam
 
 void D3D12HelloTriangle::OnInit()
 {
+    {
+
+        ComPtr<ID3D12Debug> debugController;
+        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
+        {
+            debugController->EnableDebugLayer();
+        }
+    }
+
+
     LoadPipeline();
     LoadAssets();
 }
@@ -219,12 +232,18 @@ void D3D12HelloTriangle::LoadAssets()
 {
     // Create an empty root signature.
     {
-        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+        CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
         ComPtr<ID3DBlob> signature;
         ComPtr<ID3DBlob> error;
-        ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+        ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
         ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
     }
 
@@ -329,6 +348,40 @@ void D3D12HelloTriangle::LoadAssets()
         // complete before continuing.
         WaitForPreviousFrame();
     }
+
+    // Constant buffer data (aligned to 256 bytes)
+    const UINT constantBufferSize = 256;
+
+    // Describe the constant buffer
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
+
+    // Create the constant buffer
+    ComPtr<ID3D12Resource> constantBuffer;
+    m_device->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &bufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&constantBuffer)
+    );
+    m_constantBuffer = constantBuffer;
+
+    // Describe and create a CBV descriptor heap
+    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+    heapDesc.NumDescriptors = 1;
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_cbvHeap));
+
+    // Describe the CBV
+    D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+    cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress();
+    cbvDesc.SizeInBytes = constantBufferSize; // Must be a multiple of 256 bytes
+
+    // Create the CBV
+    m_device->CreateConstantBufferView(&cbvDesc, m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
 // Update frame-based values.
@@ -386,8 +439,24 @@ void D3D12HelloTriangle::PopulateCommandList()
     // re-recording.
     ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), m_pipelineState.Get()));
 
-    // Set necessary state.
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+
+    // rotate
+    static float angle = 0;
+    angle += 0.1;
+    XMMATRIX rotationMatrix = XMMatrixRotationZ(angle);
+    UINT8* pCbvDataBegin = nullptr;
+    CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU
+    m_constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCbvDataBegin));
+    memcpy(pCbvDataBegin, &rotationMatrix, sizeof(rotationMatrix));
+    m_constantBuffer->Unmap(0, 0);
+
+    // Set the descriptor heap containing the CBV
+    m_commandList->SetDescriptorHeaps(1, &m_cbvHeap);
+    // Set the constant buffer descriptor table (bind CBV to root signature)
+    m_commandList->SetGraphicsRootDescriptorTable(0, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
+
+    // Set necessary state.
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 

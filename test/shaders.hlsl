@@ -8,7 +8,10 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-
+cbuffer ConstantBuffer : register(b0)
+{
+    matrix worldViewProj;
+};
 struct PSInput
 {
     float4 position : SV_POSITION;
@@ -19,7 +22,7 @@ PSInput VSMain(float4 position : POSITION, float4 color : COLOR)
 {
     PSInput result;
 
-    result.position = position * float4(1.9, 1.9, 1.9, 1);
+    result.position = mul(worldViewProj, position * float4(1.9, 1.9, 1.9, 1));
     result.color = color;
 
     return result;
