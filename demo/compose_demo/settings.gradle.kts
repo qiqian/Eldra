@@ -17,6 +17,7 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
+        mavenLocal()
         maven("https://maven.qq-home.com:8443/repository/jetbrains-compose-dev/")
         maven("https://maven.qq-home.com:8443/repository/google/") {
             mavenContent {

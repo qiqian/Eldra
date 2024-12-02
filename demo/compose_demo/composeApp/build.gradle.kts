@@ -14,7 +14,7 @@ plugins {
 kotlin {
     configurations.all {
         resolutionStrategy {
-            force("org.jetbrains.skiko:skiko:0.8.18")
+            force("org.jetbrains.skiko:skiko:0.8.18-eldra")
         }
     }
 
