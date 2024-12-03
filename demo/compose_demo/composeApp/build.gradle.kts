@@ -4,6 +4,22 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
 
+//configurations.all {
+//    resolutionStrategy {
+//        force("org.jetbrains.skiko:skiko-awt:0.8.18-eldra")
+//        force("org.jetbrains.skiko:skiko:0.8.18-eldra")
+//    }
+//}
+configurations.all {
+    resolutionStrategy {
+        eachDependency {
+            if (requested.group == "org.jetbrains.skiko") {
+                useVersion("0.8.18-eldra") // Applies the version pattern
+            }
+        }
+    }
+}
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidApplication)
@@ -12,12 +28,6 @@ plugins {
 }
 
 kotlin {
-    configurations.all {
-        resolutionStrategy {
-            force("org.jetbrains.skiko:skiko:0.8.18-eldra")
-        }
-    }
-
     androidTarget {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
