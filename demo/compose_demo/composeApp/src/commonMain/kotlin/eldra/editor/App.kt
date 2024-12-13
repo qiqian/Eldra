@@ -6,7 +6,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
@@ -17,8 +16,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.isFinite
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.Brush.Companion.linearGradient
-import androidx.compose.ui.graphics.LinearGradient
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -27,9 +24,13 @@ import kotlin.math.abs
 
 import compose_demo.composeapp.generated.resources.Res
 import compose_demo.composeapp.generated.resources.compose_multiplatform
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.withContext
+import kotlinx.atomicfu.*
 
 @Immutable
-class LinearGradient2 internal constructor(
+class TexBrush internal constructor(
     private val colors: List<Color>,
     private val stops: List<Float>? = null,
     private val start: Offset,
@@ -58,15 +59,6 @@ class LinearGradient2 internal constructor(
         )
     }
 
-    override fun hashCode(): Int {
-        var result = colors.hashCode()
-        result = 31 * result + (stops?.hashCode() ?: 0)
-        result = 31 * result + start.hashCode()
-        result = 31 * result + end.hashCode()
-        result = 31 * result + tileMode.hashCode()
-        return result
-    }
-
     override fun toString(): String {
         val startValue = if (start.isFinite) "start=$start, " else ""
         val endValue = if (end.isFinite) "end=$end, " else ""
@@ -79,37 +71,65 @@ class LinearGradient2 internal constructor(
 }
 
 @Stable
-fun horizontalGradient2(
+fun texBrush(
     colors: List<Color>,
     startX: Float = 0.0f,
     endX: Float = Float.POSITIVE_INFINITY,
     tileMode: TileMode = TileMode.Clamp
-): Brush = linearGradient2(colors, Offset(startX, 0.0f), Offset(endX, 0.0f), tileMode)
+): TexBrush {
+    return TexBrush(colors, null, Offset(startX, 0.0f), Offset(endX, 0.0f), tileMode)
+}
+@Composable
+fun texBrushUpdate(brush:TexBrush) {
+    var sem = rt_regsiter()
+    LaunchedEffect(brush) {
+        withContext(Dispatchers.Default) {
+            while(true) {
+                sem.acquire()
+                withContext(Dispatchers.Main) {
+                    // update brush
+                    println("brush update " + brush.toString())
+                }
+            }
+        }
+    }
+    DisposableEffect(brush) {
+        onDispose {
+            // todo cleanup brush
+            println("brush dispose " + brush.toString())
+        }
+    }
+}
 
-@Stable
-fun linearGradient2(
-    colors: List<Color>,
-    start: Offset = Offset.Zero,
-    end: Offset = Offset.Infinite,
-    tileMode: TileMode = TileMode.Clamp
-): Brush = LinearGradient2(
-    colors = colors,
-    stops = null,
-    start = start,
-    end = end,
-    tileMode = tileMode
-)
+val global_id = atomic(0);
+var notifier: MutableMap<Int, Semaphore> = mutableMapOf<Int, Semaphore>();
+fun rt_regsiter():Semaphore {
+    var sem = Semaphore(1)
+    notifier[global_id.incrementAndGet()] = sem
+    return sem
+}
+fun rt_update() {
+    Thread {
+        while(true) {
+            Thread.sleep(1000)
+            // Increment the counter
+            notifier[1]?.release()
+        }
+    }.start()
+}
 
 @Composable
 @Preview
 fun App() {
+    rt_update();
     MaterialTheme {
         var showContent by remember { mutableStateOf(false) }
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Button(onClick = { showContent = !showContent }) {
                 Text("Click me!")
             }
-            val brush = horizontalGradient2(listOf(Color.Red, Color.Blue))
+            val brush by remember { mutableStateOf(texBrush(listOf(Color.Red, Color.Blue))) }
+            texBrushUpdate(brush)
             Canvas(Modifier.fillMaxWidth().height(300.dp),
                 //modifier = Modifier.size(200.dp),
                 onDraw = {
