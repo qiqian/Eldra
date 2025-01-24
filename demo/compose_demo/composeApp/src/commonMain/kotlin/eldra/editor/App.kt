@@ -3,19 +3,20 @@ package eldra.editor
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.isFinite
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -79,36 +80,13 @@ fun texBrush(
 ): TexBrush {
     return TexBrush(colors, null, Offset(startX, 0.0f), Offset(endX, 0.0f), tileMode)
 }
-@Composable
-fun texBrushUpdate(brush:TexBrush) {
-    var sem = rt_regsiter()
-    LaunchedEffect(brush) {
-        withContext(Dispatchers.Default) {
-            while(true) {
-                sem.acquire()
-                withContext(Dispatchers.Main) {
-                    // update brush
-                    println("brush update " + brush.toString())
-                }
-            }
-        }
-    }
-    DisposableEffect(brush) {
-        onDispose {
-            // todo cleanup brush
-            println("brush dispose " + brush.toString())
-        }
-    }
-}
 
 val global_id = atomic(0);
 var notifier: MutableMap<Int, Semaphore> = mutableMapOf<Int, Semaphore>();
-fun rt_regsiter():Semaphore {
-    var sem = Semaphore(1)
+fun ShaderRegister(sem:Semaphore) {
     notifier[global_id.incrementAndGet()] = sem
-    return sem
 }
-fun rt_update() {
+fun ShaderUpdate() {
     Thread {
         while(true) {
             Thread.sleep(1000)
@@ -119,22 +97,56 @@ fun rt_update() {
 }
 
 @Composable
+fun ShaderCanvas(width:Dp, height:Dp) {
+    val brush by remember { mutableStateOf(texBrush(listOf(Color.Red, Color.Blue))) }
+    val ver = remember { mutableStateOf(0) }
+    val sem = Semaphore(1)
+    ShaderRegister(sem)
+    LaunchedEffect(brush) {
+        withContext(Dispatchers.Default) {
+            while(true) {
+                sem.acquire()
+                withContext(Dispatchers.Main) {
+                    // update brush
+                    ver.value++;
+                    println("brush update " + ver.value.toString())
+                }
+            }
+        }
+    }
+    DisposableEffect(brush) {
+        onDispose {
+            // todo cleanup brush
+            println("brush dispose " + brush.toString())
+        }
+    }
+    var mod = if (width == 0.dp) { Modifier.fillMaxWidth() } else { Modifier.width(width) }
+    mod = if (height == 0.dp) { mod.fillMaxHeight() } else { mod.height(height) }
+    Canvas(mod.drawWithCache {
+            val v = ver.value
+            onDrawBehind {
+                println("brush redraw " + v.toString())
+                drawRect(brush)
+            }
+        },
+        //modifier = Modifier.size(200.dp),
+        onDraw = {
+            //println("Shader brush!")
+            //drawRect(brush)
+        })
+}
+
+@Composable
 @Preview
 fun App() {
-    rt_update();
+    ShaderUpdate();
     MaterialTheme {
         var showContent by remember { mutableStateOf(false) }
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Button(onClick = { showContent = !showContent }) {
                 Text("Click me!")
             }
-            val brush by remember { mutableStateOf(texBrush(listOf(Color.Red, Color.Blue))) }
-            texBrushUpdate(brush)
-            Canvas(Modifier.fillMaxWidth().height(300.dp),
-                //modifier = Modifier.size(200.dp),
-                onDraw = {
-                    drawRect(brush)
-                })
+            ShaderCanvas(0.dp, 300.dp)
             AnimatedVisibility(showContent) {
                 val greeting = remember { Greeting().greet() }
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {

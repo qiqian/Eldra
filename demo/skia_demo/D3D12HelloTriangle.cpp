@@ -39,8 +39,8 @@ public:
         SkPaint paint;
         //paint.setColor(SK_ColorRED);
         paint.setShader(shader);
-        paint.setAntiAlias(true);             // ÆôÓÃ¿¹¾â³Ý
-        paint.setStyle(SkPaint::kStrokeAndFill_Style); // ÉèÖÃ»æÖÆÑùÊ½ÎªÌî³ä
+        paint.setAntiAlias(true);             // ï¿½ï¿½ï¿½Ã¿ï¿½ï¿½ï¿½ï¿½
+        paint.setStyle(SkPaint::kStrokeAndFill_Style); // ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½Ê½Îªï¿½ï¿½ï¿½
         canvas->drawCircle(x, y, radius, paint);
     }
 
@@ -559,7 +559,7 @@ void D3D12HelloTriangle::OnRender()
 
         // Update and draw the animated shape
         shape.update();
-        m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(tex_renderTargetTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+        //m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(tex_renderTargetTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
         shape.draw(canvas, skShader);
 
         // Flush the canvas
@@ -567,7 +567,7 @@ void D3D12HelloTriangle::OnRender()
     }
 
     // Indicate that the back buffer will now be used to present.
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+    //m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
     // Present the frame.
     ThrowIfFailed(m_swapChain->Present(1, 0));
 
@@ -618,7 +618,7 @@ void D3D12HelloTriangle::PopulateCommandList(wchar_t* name, const float clearCol
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
     // Indicate that the back buffer will be used as a render target.
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), from, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    //m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), from, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtv, rtv_idx, m_rtvDescriptorSize);
     m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
